@@ -1,0 +1,158 @@
+package com.phataklive.net
+
+import com.phataklive.data.Gate
+import com.phataklive.data.Geo
+import com.phataklive.data.LatLng
+import com.phataklive.data.LiveDeparture
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
+
+/**
+ * Reads the JSON that google.com/search?tbm=map returns to the Maps web client (no API key).
+ * Unofficial and undocumented: the layout was verified on 2026-11-13 and can change.
+ */
+object GoogleMaps {
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
+
+    private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/130.0 Mobile Safari/537.36"
+
+    data class Place(val name: String, val pos: LatLng, val categories: List<String>, val placeId: String?, val address: String?)
+
+    private fun fetch(query: String, near: LatLng?, spanMeters: Int): JSONArray {
+        val q = URLEncoder.encode(query, "UTF-8")
+        val pb = if (near != null)
+            "&pb=!4m12!1m3!1d$spanMeters!2d${near.lng}!3d${near.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!7i20!10b1"
+        else ""
+        val req = Request.Builder()
+            .url("https://www.google.com/search?tbm=map&hl=en&gl=in&q=$q$pb")
+            .header("User-Agent", UA)
+            .header("Accept-Language", "en-IN,en;q=0.9")
+            .build()
+        http.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw java.io.IOException("Google Maps HTTP ${r.code}")
+            var text = r.body!!.string().substringBefore("/*\"\"*/")
+            if (text.startsWith(")]}'")) text = text.substring(4)
+            return JSONArray(text.trim())
+        }
+    }
+
+    /** Places matching [query] around [near]; Google only biases by location, so results are distance-filtered. */
+    fun searchPlaces(query: String, near: LatLng, radiusKm: Double): List<Place> {
+        val data = fetch(query, near, (radiusKm * 2000).toInt().coerceIn(2000, 60000))
+        val list = data.at(0, 1) as? JSONArray ?: return emptyList()
+        val out = ArrayList<Place>()
+        for (i in 0 until list.length()) {
+            val p = list.at(i, 14) as? JSONArray ?: continue
+            val name = p.at(11) as? String ?: continue
+            val lat = (p.at(9, 2) as? Number)?.toDouble() ?: continue
+            val lng = (p.at(9, 3) as? Number)?.toDouble() ?: continue
+            val pos = LatLng(lat, lng)
+            if (Geo.km(near, pos) > radiusKm) continue
+            val cats = (p.at(13) as? JSONArray)?.let { a -> (0 until a.length()).mapNotNull { a.optString(it, null) } } ?: emptyList()
+            out += Place(name, pos, cats, p.at(78) as? String, p.at(39) as? String)
+        }
+        return out
+    }
+
+    private val gateWords = Regex(
+        "(level\\s*crossing|\\bl\\.?\\s?c\\.?\\b|lc\\s*gate|rail(way)?\\s*(gate|crossing|phatak)|phatak|crossing\\s*gate|label\\s*crossing)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    // Things that contain the words above but are not level crossings: station entrances ("New Delhi Railway Station
+    // Gate No. 2"), streets named after a gate ("Railway Gate Rd"), and shops or stops nearby.
+    private val notAGate = Regex(
+        "(\\bstation\\b|\\broad\\b|\\brd\\b|\\bstreet\\b|\\bst\\.?$|\\blane\\b|\\bmarg\\b|\\bcolony\\b|\\bnagar\\b|\\bmetro\\b|" +
+            "\\bbus\\b|\\bstop\\b|\\bhotel\\b|\\bschool\\b|\\bmarket\\b|\\bshop\\b|\\bstore\\b|\\bapartment|\\bsociety\\b|\\bparking\\b)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** True for names of rail gates / level crossings ("LC gate no 24", "Rail Phatak"), not "Gateway Hotel" or "Railway Gate Rd". */
+    fun isGateName(name: String): Boolean = gateWords.containsMatchIn(name) && !notAGate.containsMatchIn(name)
+
+    /** Rail gates (level crossings) Google Maps knows around [near]. */
+    fun searchGates(near: LatLng, radiusKm: Double): List<Gate> {
+        val found = ArrayList<Gate>()
+        for (q in listOf("railway gate", "level crossing", "railway crossing gate", "rail phatak")) {
+            val places = runCatching { searchPlaces(q, near, radiusKm) }.getOrDefault(emptyList())
+            for (p in places) {
+                if (!isGateName(p.name)) continue
+                // same crossing listed twice: very close, or same name a little apart
+                if (found.any { Geo.km(it.pos, p.pos) < 0.08 || (it.name.equals(p.name, true) && Geo.km(it.pos, p.pos) < 0.3) }) continue
+                found += Gate(p.name, p.pos, p.placeId, "maps")
+            }
+        }
+        return found
+    }
+
+    private val plusCode = Regex("^[23456789CFGHJMPQRVWX]{4,8}\\+[23456789CFGHJMPQRVWX]{2,3},? (.+)$")
+
+    /** Place name for a coordinate: Google labels it "7MRV+2P Bolpur, West Bengal" (plus code + locality). */
+    fun placeName(p: LatLng): String? {
+        fun walk(n: Any?): Sequence<String> = when (n) {
+            is JSONArray -> (0 until n.length()).asSequence().flatMap { walk(n.opt(it)) }
+            is String -> sequenceOf(n)
+            else -> emptySequence()
+        }
+        return walk(fetch("${p.lat},${p.lng}", null, 0)).firstNotNullOfOrNull { plusCode.matchEntire(it)?.groupValues?.get(1) }
+    }
+
+    /** Live departures Google shows on a railway station's Maps card. */
+    fun stationDepartures(stationName: String, stationCode: String): List<LiveDeparture> {
+        // adding the station code makes Google miss the station card, so it is only the last try
+        var place: JSONArray? = null
+        for (q in listOf("$stationName railway station", "$stationName station", "$stationName railway station $stationCode")) {
+            val data = fetch(q, null, 0)
+            val list = data.at(0, 1) as? JSONArray
+            place = (0 until (list?.length() ?: 0)).asSequence()
+                .mapNotNull { list!!.at(it, 14) as? JSONArray }
+                .firstOrNull { it.at(62, 1, 0, 2) != null }
+            if (place != null) break
+        }
+        val trains = place?.at(62, 1, 0, 2) as? JSONArray ?: return emptyList()
+        val out = ArrayList<LiveDeparture>()
+        for (i in 0 until trains.length()) {
+            val t = trains.optJSONArray(i) ?: continue
+            val name = t.at(1, 0, 0) as? String ?: continue
+            val row = t.at(1, 0, 3, 0) as? JSONArray ?: continue
+            val dep = row.optJSONArray(0) ?: continue
+            val est = (dep.at(0, 0) as? Number)?.toLong() ?: continue
+            val sched = (dep.at(6, 0) as? Number)?.toLong()
+            val flag = dep.at(4) as? Number
+            val lat = (dep.at(10, 1, 0, 0, 1, 2) as? Number)?.toDouble()
+            val lng = (dep.at(10, 1, 0, 0, 1, 3) as? Number)?.toDouble()
+            val posTs = (dep.at(10, 1, 0, 0, 2) as? Number)?.toLong()
+            val platform = (0 until row.length()).map { row.opt(it) }.filterIsInstance<String>()
+                .firstOrNull { it.startsWith("Platform", ignoreCase = true) }
+            out += LiveDeparture(
+                trainNo = t.at(5, 0, 1, 0) as? String,
+                trainName = name,
+                estEpochSec = est,
+                schedEpochSec = sched,
+                realtime = flag != null,
+                platform = platform,
+                trainPos = if (lat != null && lng != null) LatLng(lat, lng) else null,
+                trainPosEpochSec = posTs,
+            )
+        }
+        return out
+    }
+}
+
+/** Safe nested index into Google's positional JSON arrays. */
+internal fun JSONArray.at(vararg path: Int): Any? {
+    var node: Any? = this
+    for (i in path) {
+        val a = node as? JSONArray ?: return null
+        if (i < 0 || i >= a.length() || a.isNull(i)) return null
+        node = a.get(i)
+    }
+    return node
+}

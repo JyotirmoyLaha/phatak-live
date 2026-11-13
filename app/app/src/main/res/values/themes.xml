@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand navy behind the first frame, so neither light nor dark mode flashes white at launch. -->
+    <style name="Theme.PhatakLive" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/brand_navy</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

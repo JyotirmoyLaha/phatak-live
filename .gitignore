@@ -1,0 +1,31 @@
+# build outputs
+app/.gradle/
+app/build/
+app/app/build/
+app/app/.cxx/
+app/*.log
+*.apk
+*.aab
+
+# machine-specific / secrets
+app/local.properties
+app/keystore.properties
+app/env.sh
+keystore/
+*.jks
+*.keystore
+
+# local work, not part of the public app
+tools/
+train/
+data-pipeline/
+third_party/
+
+# misc
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
