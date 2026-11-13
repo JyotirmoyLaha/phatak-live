@@ -4,6 +4,7 @@ package com.phataklive.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -80,6 +81,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -110,6 +112,8 @@ import com.phataklive.data.GateStatus
 import com.phataklive.data.StationBoard
 import com.phataklive.data.TimeSource
 import com.phataklive.gate.GateEngine
+import com.phataklive.update.UpdateChecker
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 // ===================================================================================== root
@@ -146,6 +150,27 @@ fun MainScreen(
             }
         }
     }
+    AppUpdate(t)
+}
+
+/** Offers a newer release from GitHub (checked once per launch in MainActivity). */
+@Composable
+private fun AppUpdate(t: Strings) {
+    val info by UpdateChecker.available.collectAsState()
+    val dl by UpdateChecker.download.collectAsState()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val update = info ?: return
+    UpdateDialog(
+        update, dl, t,
+        onDownload = { scope.launch { UpdateChecker.downloadApk(ctx) } },
+        onCancelDownload = { UpdateChecker.cancelDownload() },
+        onInstall = { file ->
+            if (!UpdateChecker.install(ctx, file)) Toast.makeText(ctx, t.allowInstall, Toast.LENGTH_LONG).show()
+        },
+        onOpenReleasePage = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))) },
+        onLater = { UpdateChecker.dismiss() },
+    )
 }
 
 @Composable

@@ -144,6 +144,8 @@ in any town in India.
 - **Three languages**: the whole app switches between **English, हिन्दी and বাংলা** with one tap (EN / हि / বা).
   On first launch it follows your phone's language.
 - **Light and dark theme**; auto-refresh every 3 minutes while open, gate states updated every 20 seconds.
+- **In-app updates**: when a new version is released, the app shows what's new and updates itself in one tap.
+  It installs over the current version, so there's nothing to uninstall and your settings are kept.
 
 ## Architecture
 

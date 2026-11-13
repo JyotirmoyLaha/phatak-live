@@ -92,6 +92,23 @@ class Strings(lang: String) {
         "“$q”-এর জন্য কোনো ট্রেন পাওয়া যায়নি। ৫ অঙ্কের ট্রেন নম্বর লিখুন।")
     val language = t("Language", "भाषा", "ভাষা")
 
+    // app update
+    val updateTitle = t("Software Update", "सॉफ़्टवेयर अपडेट", "সফটওয়্যার আপডেট")
+    fun updateAvailable(v: String) = t("Phatak Live $v is available to download.", "Phatak Live $v डाउनलोड के लिए उपलब्ध है।",
+        "Phatak Live $v ডাউনলোডের জন্য উপলব্ধ।")
+    val whatsNew = t("WHAT'S NEW", "नया क्या है", "নতুন কী আছে")
+    val downloadNow = t("Download Now", "अभी डाउनलोड करें", "এখনই ডাউনলোড করুন")
+    val downloadingUpdate = t("Downloading…", "डाउनलोड हो रहा है…", "ডাউনলোড হচ্ছে…")
+    val installNow = t("Install Now", "अभी इंस्टॉल करें", "এখনই ইনস্টল করুন")
+    val remindLater = t("Remind Me Later", "बाद में याद दिलाएँ", "পরে মনে করিয়ে দিন")
+    val openReleasePage = t("Open Download Page", "डाउनलोड पेज खोलें", "ডাউনলোড পেজ খুলুন")
+    val updateFailed = t("Download failed. Check your internet and try again.", "डाउनलोड नहीं हुआ। इंटरनेट जाँचें और फिर कोशिश करें।",
+        "ডাউনলোড হয়নি। ইন্টারনেট দেখে আবার চেষ্টা করুন।")
+    val allowInstall = t("Allow “Install unknown apps” for Phatak Live, then come back and tap Install Now.",
+        "Phatak Live के लिए “Install unknown apps” चालू करें, फिर वापस आकर Install Now दबाएँ।",
+        "Phatak Live-এর জন্য “Install unknown apps” চালু করুন, তারপর ফিরে এসে Install Now চাপুন।")
+    val cancel = t("Cancel", "रद्द करें", "বাতিল")
+
     val footer = t(
         "Gates usually close about 10 minutes before a train reaches them and open about 3 minutes after it passes, so expect roughly 13 minutes per train. LIVE = confirmed by live train data; TIMETABLE = may be off if the train is late. Always obey the gate and the gateman.",
         "फाटक आमतौर पर ट्रेन पहुँचने से लगभग 10 मिनट पहले बंद होता है और गुज़रने के लगभग 3 मिनट बाद खुलता है, यानी हर ट्रेन पर करीब 13 मिनट। लाइव = लाइव डेटा से पक्का; टाइमटेबल = ट्रेन लेट हो तो बदल सकता है। हमेशा फाटक और गेटमैन की बात मानें।",

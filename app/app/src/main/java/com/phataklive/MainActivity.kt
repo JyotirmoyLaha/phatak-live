@@ -12,6 +12,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.phataklive.update.UpdateChecker
+import kotlinx.coroutines.launch
 import com.phataklive.ui.MainScreen
 import com.phataklive.ui.PhatakTheme
 
@@ -39,6 +42,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // once per launch: drop any old downloaded update, then look for a newer release on GitHub
+        if (savedInstanceState == null) lifecycleScope.launch {
+            UpdateChecker.clearCache(this@MainActivity)
+            UpdateChecker.check()
+        }
         setContent {
             PhatakTheme {
                 MainScreen(
