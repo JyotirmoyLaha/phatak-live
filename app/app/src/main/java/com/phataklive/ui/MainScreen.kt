@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +27,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -48,6 +51,10 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Directions
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Sensors
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.DirectionsRailway
 import androidx.compose.material.icons.rounded.LocationOff
 import androidx.compose.material.icons.rounded.LocationOn
@@ -97,6 +104,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -104,6 +112,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phataklive.LocationAccess
+import com.phataklive.R
 import com.phataklive.MainViewModel
 import com.phataklive.Problem
 import com.phataklive.UiState
@@ -293,6 +302,8 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onRadius: (Int
             .statusBarsPadding().padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(painterResource(R.drawable.ic_logo), contentDescription = null, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.width(10.dp))
             Text("Phatak", color = c.onHeader, style = MaterialTheme.typography.headlineSmall)
             Text(" Live", color = c.amber, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.width(8.dp))
@@ -318,7 +329,7 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onRadius: (Int
             }
             Text(where, color = c.onHeader, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false))
-            s.accuracyM?.let { Text("  ±${it.toInt()} m", color = c.onHeaderMuted, style = MaterialTheme.typography.bodySmall) }
+            s.accuracyM?.let { Text("  · ${t.accuracy(it.toInt())}", color = c.onHeaderMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
         }
         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             listOf(10, 15, 20).forEach { km ->
@@ -384,7 +395,7 @@ private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocati
         }
         if (s.boards.isNotEmpty()) item { SectionTitle(t.stations, "${s.stations.size}") }
         items(s.boards, key = { it.station.code }) { BoardCard(it, t) }
-        item { Text(t.footer, style = MaterialTheme.typography.bodySmall, color = Phatak.c.muted, modifier = Modifier.padding(vertical = 8.dp)) }
+        item { InfoBox(t) }
     }
 }
 
@@ -402,6 +413,33 @@ private fun Banner(icon: ImageVector, title: String?, body: String, action: Stri
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (action != null && onAction != null) FilledTonalButton(onClick = onAction) { Text(action) }
+    }
+}
+
+/** "How gate times work": the timing rule and LIVE / TIMETABLE explained, in a tidy info box. */
+@Composable
+private fun InfoBox(t: Strings) {
+    val c = Phatak.c
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp).clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Info, null, tint = c.amber, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(t.infoTitle, style = MaterialTheme.typography.titleMedium)
+        }
+        listOf(
+            Icons.Rounded.Schedule to t.info1,
+            Icons.Rounded.Sensors to t.info2,
+            Icons.Rounded.WarningAmber to t.info3,
+        ).forEach { (icon, text) ->
+            Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                Icon(icon, null, tint = c.muted, modifier = Modifier.size(18.dp).padding(top = 1.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -448,8 +486,8 @@ private fun look(st: GateState, t: Strings): Look {
 
 /** "Opens in 4 min" / "Closes in 12 min" / "Clear for the next 3 hours". */
 private fun countdown(g: GateStatus, t: Strings, now: Long): Pair<String, String> = when {
-    g.state == GateState.CLOSED && g.windowOpen != null -> t.opensIn to "${((g.windowOpen - now) / 60).coerceAtLeast(0)} ${t.min}"
-    g.windowClose != null -> t.closesIn to "${((g.windowClose - now) / 60).coerceAtLeast(0)} ${t.min}"
+    g.state == GateState.CLOSED && g.windowOpen != null -> t.opensIn to t.duration(((g.windowOpen - now) / 60).toInt().coerceAtLeast(0))
+    g.windowClose != null -> t.closesIn to t.duration(((g.windowClose - now) / 60).toInt().coerceAtLeast(0))
     else -> "" to t.clearFor
 }
 
@@ -542,7 +580,7 @@ private fun DelayChip(delayMin: Int, src: TimeSource, t: Strings) {
     val c = Phatak.c
     val (fg, txt) = when {
         src == TimeSource.SCHEDULED -> c.muted to t.timetableOnly
-        delayMin > 0 -> c.closed to "+$delayMin ${t.min.substringBefore(' ')}"
+        delayMin > 0 -> c.closed to t.delayed(delayMin)
         else -> c.open to t.onTime
     }
     Text(txt, color = fg, style = MaterialTheme.typography.labelMedium,
@@ -579,8 +617,8 @@ private fun GateCard(g: GateStatus, t: Strings, now: Long) {
     var expanded by remember { mutableStateOf(false) }
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = c.card),
         border = BorderStroke(1.dp, c.cardBorder), modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
-        Row {
-            Box(Modifier.width(6.dp).height(if (expanded) 220.dp else 104.dp).background(l.fg))
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(l.fg))
             Column(Modifier.padding(14.dp).weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(l.label, color = l.fg, style = MaterialTheme.typography.labelMedium,
@@ -647,15 +685,17 @@ private fun BoardCard(b: StationBoard, t: Strings) {
 // ===================================================================================== search tabs
 
 @Composable
-private fun SearchField(hint: String, busy: Boolean, initial: String, onSearch: (String) -> Unit) {
-    var q by rememberSaveable(hint) { mutableStateOf(initial) }
+private fun SearchField(id: String, hint: String, busy: Boolean, initial: String, onClear: () -> Unit, onSearch: (String) -> Unit) {
+    // keyed by a fixed id, so switching language doesn't wipe what the user typed
+    var q by rememberSaveable(id) { mutableStateOf(initial) }
     OutlinedTextField(
-        value = q, onValueChange = { q = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+        value = q, modifier = Modifier.fillMaxWidth(), singleLine = true,
+        onValueChange = { q = it; if (it.isBlank()) onClear() },   // emptied by hand: results go too
         placeholder = { Text(hint) }, shape = RoundedCornerShape(16.dp),
         leadingIcon = { Icon(Icons.Rounded.Search, null) },
         trailingIcon = {
-            if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else if (q.isNotEmpty()) IconButton(onClick = { q = "" }) { Icon(Icons.Rounded.Close, null) }
+            if (q.isNotEmpty()) IconButton(onClick = { q = ""; onClear() }) { Icon(Icons.Rounded.Close, null) }
+            else if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { if (q.isNotBlank()) onSearch(q) }),
@@ -670,14 +710,13 @@ private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
         item {
             Text(t.searchGateTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.searchGateSub, style = MaterialTheme.typography.bodyMedium, color = Phatak.c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-            SearchField(t.gateHint, s.gateSearching, s.gateQuery) { q -> vm.setGateQuery(q); vm.searchGate(q) }
+            SearchField("gate", t.gateHint, s.gateSearching, s.gateQuery, onClear = vm::clearGateSearch) { q -> vm.setGateQuery(q); vm.searchGate(q) }
         }
         s.gateProblem?.let { item { EmptyNote(problemText(it, t)) } }
         if (s.gateSearching && s.gateResults == null) items(2) { Skeleton(110.dp) }
         s.gateResults?.let { list ->
             list.firstOrNull()?.let { item(key = "hero") { GateHero(it, t, now) } }
             items(list.drop(1), key = { "s" + it.gate.pos + it.gate.name }) { GateCard(it, t, now) }
-            if (list.isNotEmpty()) item { TextButton(onClick = vm::clearGateSearch) { Text(t.clear) } }
         }
     }
 }
@@ -689,7 +728,7 @@ private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
         item {
             Text(t.trainTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.trainSub, style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-            SearchField(t.trainHint, s.trainSearching, "") { vm.searchTrain(it) }
+            SearchField("train", t.trainHint, s.trainSearching, "", onClear = vm::clearTrain) { vm.searchTrain(it) }
         }
         s.trainProblem?.let { item { EmptyNote(problemText(it, t)) } }
         if (s.trainSearching && s.train == null) item { Skeleton(180.dp) }
@@ -720,7 +759,7 @@ private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
                         Text(tr.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 8.dp))
                         val (col, txt) = when {
                             !tr.live -> c.muted to t.timetableOnly
-                            tr.delayMin > 0 -> c.closed to "${tr.delayMin} ${t.min.substringBefore(' ')} ${t.late}"
+                            tr.delayMin > 0 -> c.closed to t.delayed(tr.delayMin)
                             else -> c.open to t.onTime
                         }
                         Text(txt, style = MaterialTheme.typography.headlineLarge, color = col, modifier = Modifier.padding(top = 6.dp))
@@ -747,7 +786,6 @@ private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
                     }
                 }
             }
-            item { TextButton(onClick = vm::clearTrain) { Text(t.clear) } }
         }
     }
 }

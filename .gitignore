@@ -29,3 +29,7 @@ __pycache__/
 *.iml
 .DS_Store
 Thumbs.db
+
+# screenshots / local test captures
+*.png
+!app/app/src/**/*.png

@@ -81,14 +81,6 @@ allows it. Phatak Live's rule follows what is reported from the ground:
 Real closures vary by gate (interlocked or not, busy or quiet line) and by gateman, so the app always shows times as
 estimates ("~") and says whether the train time behind them is live.
 
----|---|
-| Gate closes | ~5 min before the train reaches the gate |
-| Gate opens | ~3 min after the train has passed |
-| Trains close together | windows less than 2 min apart are merged: the gate stays down |
-| Gate within 600 m of a station | time taken midway between the train's arrival and departure there |
-| Gate between stations | interpolated by distance along the track between two consecutive stations |
-| Live train missing from the timetable (specials) | live time at the nearest station ± travel time at ~40 km/h |
-
 ---
 
 ## How Phatak Live differs from other apps
@@ -118,17 +110,6 @@ We looked at the apps that already try to answer "is the crossing open?" (as of 
 Fatak shows there is real demand: thousands of people check their local crossing every day. Phatak Live's approach
 **computes** the status for any gate instead of curating a list or waiting for reports, so it works on the first day
 in any town in India.
-
----|---|---|---|
-| Main question | How late is my train? | Is it blocked right now (if someone reported)? | **Is the gate open, and when will it close / open?** |
-| Starting point | Train number / PNR | Map | **Your GPS location: no typing** |
-| Gate open/closed | ✗ | ✓ where reported | **✓ every gate found, computed from train timings** |
-| Closing and reopening *time* | ✗ | ✗ | **✓ with countdown** |
-| Trains passing without stopping | usually hidden | ✗ | **✓ included: they close gates too** |
-| Live delay applied to the gate | ✗ | ✗ | **✓** |
-| Verified vs. estimated shown | mixed | ✗ | **✓ every time marked LIVE or TIMETABLE** |
-| Languages | English first | varies | **English, हिन्दी, বাংলা, switchable** |
-| Works with poor internet | limited | ✗ | **timetable estimates offline, clearly marked** |
 
 ---
 

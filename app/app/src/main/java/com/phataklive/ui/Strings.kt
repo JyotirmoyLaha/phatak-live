@@ -109,9 +109,24 @@ class Strings(lang: String) {
         "Phatak Live-এর জন্য “Install unknown apps” চালু করুন, তারপর ফিরে এসে Install Now চাপুন।")
     val cancel = t("Cancel", "रद्द करें", "বাতিল")
 
-    val footer = t(
-        "Gates usually close about 10 minutes before a train reaches them and open about 3 minutes after it passes, so expect roughly 13 minutes per train. LIVE = confirmed by live train data; TIMETABLE = may be off if the train is late. Always obey the gate and the gateman.",
-        "फाटक आमतौर पर ट्रेन पहुँचने से लगभग 10 मिनट पहले बंद होता है और गुज़रने के लगभग 3 मिनट बाद खुलता है, यानी हर ट्रेन पर करीब 13 मिनट। लाइव = लाइव डेटा से पक्का; टाइमटेबल = ट्रेन लेट हो तो बदल सकता है। हमेशा फाटक और गेटमैन की बात मानें।",
-        "গেট সাধারণত ট্রেন পৌঁছানোর প্রায় ১০ মিনিট আগে বন্ধ হয় আর চলে যাওয়ার প্রায় ৩ মিনিট পরে খোলে, অর্থাৎ প্রতি ট্রেনে প্রায় ১৩ মিনিট। লাইভ = লাইভ ডেটায় নিশ্চিত; টাইমটেবিল = ট্রেন দেরি করলে বদলাতে পারে। সবসময় গেট আর গেটম্যানের কথা মানুন।",
-    )
+    // plain-language bits
+    /** "4 min" / "2 h 39 min" */
+    fun duration(m: Int) = if (m < 60) t("$m min", "$m मिनट में", "$m মিনিটে")
+        else if (m % 60 == 0) t("${m / 60} h", "${m / 60} घंटे में", "${m / 60} ঘণ্টায়")
+        else t("${m / 60} h ${m % 60} min", "${m / 60} घंटे ${m % 60} मिनट में", "${m / 60} ঘণ্টা ${m % 60} মিনিটে")
+    fun delayed(m: Int) = t("Delayed $m min", "$m मिनट लेट", "$m মিনিট দেরি")
+    fun accuracy(m: Int) = if (m <= 100) t("accurate to $m m", "$m मीटर तक सटीक", "$m মিটার পর্যন্ত নির্ভুল")
+        else t("approximate location", "अनुमानित लोकेशन", "আনুমানিক লোকেশন")
+
+    // info box
+    val infoTitle = t("How gate times work", "फाटक का समय कैसे पता चलता है", "গেটের সময় কীভাবে জানা যায়")
+    val info1 = t("A gate usually closes about 10 minutes before a train arrives and opens about 3 minutes after it has passed.",
+        "फाटक आमतौर पर ट्रेन आने से करीब 10 मिनट पहले बंद होता है और ट्रेन निकलने के करीब 3 मिनट बाद खुलता है।",
+        "গেট সাধারণত ট্রেন আসার প্রায় ১০ মিনিট আগে বন্ধ হয় আর ট্রেন চলে যাওয়ার প্রায় ৩ মিনিট পরে খোলে।")
+    val info2 = t("LIVE means the time is checked with the train's live running. TIMETABLE means the normal schedule; it can change if the train is late.",
+        "लाइव = ट्रेन की लाइव स्थिति से जाँचा गया समय। टाइमटेबल = सामान्य समय, ट्रेन लेट हो तो बदल सकता है।",
+        "লাইভ = ট্রেনের লাইভ অবস্থা দেখে যাচাই করা সময়। টাইমটেবিল = সাধারণ সময়, ট্রেন দেরি করলে বদলাতে পারে।")
+    val info3 = t("These are estimates. Always follow the gate, the signals and the gateman.",
+        "ये अनुमानित समय हैं। हमेशा फाटक, सिग्नल और गेटमैन की बात मानें।",
+        "এগুলো আনুমানিক সময়। সবসময় গেট, সিগন্যাল আর গেটম্যানের কথা মানুন।")
 }

@@ -88,6 +88,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var live: Map<String, GateEngine.LiveBoard> = emptyMap()
     private var liveErrors: Map<String, String> = emptyMap()
     private var refreshJob: Job? = null
+    private var gateJob: Job? = null
+    private var trainJob: Job? = null
     @Volatile private var foreground = true
 
     /** First launch follows the phone's language: Hindi or Bengali phones start in that language. */
@@ -227,7 +229,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(gateProblem = Problem.WaitingForLocation) }
             return
         }
-        viewModelScope.launch {
+        gateJob?.cancel()
+        gateJob = viewModelScope.launch {
             _state.update { it.copy(gateSearching = true, gateResults = null, gateProblem = null) }
             val res = search.run(search.gatePlan(query), user, 30.0)
             val t = now()
@@ -243,13 +246,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun clearGateSearch() = _state.update { it.copy(gateResults = null, gateQuery = "", gateProblem = null) }
+    /** Clears the search box's results, and stops a search still running so its results can't pop back in. */
+    fun clearGateSearch() {
+        gateJob?.cancel()
+        _state.update { it.copy(gateResults = null, gateQuery = "", gateProblem = null, gateSearching = false) }
+    }
 
     // ------------------------------------------------------------------ train search
 
     fun searchTrain(query: String) {
         if (query.isBlank()) return
-        viewModelScope.launch {
+        trainJob?.cancel()
+        trainJob = viewModelScope.launch {
             _state.update { it.copy(trainSearching = true, train = null, trainProblem = null) }
             val r = search.trainStatus(query.trim())
             _state.update {
@@ -259,5 +267,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun clearTrain() = _state.update { it.copy(train = null, trainProblem = null) }
+    fun clearTrain() {
+        trainJob?.cancel()
+        _state.update { it.copy(train = null, trainProblem = null, trainSearching = false) }
+    }
 }
