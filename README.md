@@ -9,7 +9,9 @@ with the exact closing and reopening time, the train causing it, and how late th
 
 [**⬇ Download the latest APK**](https://github.com/JyotirmoyLaha/phatak-live/releases/latest)
 
-`Android 10+` · `8 MB` · `No account, no ads` · `English · हिन्दी · বাংলা`
+`Android 10+` · `8 MB` · `No account, no ads, no tracking` · `English · हिन्दी · বাংলা`
+
+[Privacy Policy](PRIVACY.md) · [MIT License](LICENSE) · [Contact](https://github.com/JyotirmoyLaha/phatak-live/issues)
 
 </div>
 
@@ -157,7 +159,14 @@ GPS ─► place name ─► built-in rail database (stations, trains, stops inc
 - **Location** (precise or approximate, your choice) is used on the phone to find gates and stations near you.
   The app explains this before Android asks, and works without it (search by name).
 - Map and live-train lookups go directly from your phone to the public map service, as when you open a map.
-- No account, no ads, no analytics, no notifications permission.
+- No account, no ads, no analytics, no notifications permission. We run no server and receive none of your data.
+- Full details: **[Privacy Policy](PRIVACY.md)**.
+
+## Data
+
+Timetable and station data are bundled in the app for offline use and may be out of date. Live train times and delays
+are checked online when you open the app, and every time is labelled **LIVE** or **TIMETABLE** so you always know which
+one you are seeing.
 
 ## Roadmap
 
@@ -180,13 +189,22 @@ Release builds read signing details from `app/keystore.properties` (not in the r
 
 ## Disclaimer
 
+Phatak Live is an **independent project**. It is not affiliated with or endorsed by Indian Railways, CRIS, IRCTC or
+Google.
+
 Gate times are **estimates** computed from train timings and live data. Real gate operation depends on the gateman and
 signalling. **Always obey the gate, the signals and the gateman.** Live data comes from public web endpoints that may
 change without notice.
 
+## Contact
+
+Questions, suggestions or concerns about the app or its content: please
+[open an issue](https://github.com/JyotirmoyLaha/phatak-live/issues). We respond within 7 days.
+
 ## License
 
-© Jyotirmoy Laha. All rights reserved unless a license file says otherwise.
+The source code is released under the **[MIT License](LICENSE)**. The license covers the code only, not the bundled
+data files in `app/app/src/main/assets/`.
 
 ## Sources
 
