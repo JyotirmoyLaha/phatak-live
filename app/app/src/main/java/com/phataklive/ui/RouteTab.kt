@@ -461,7 +461,19 @@ private fun StatusLine(o: Option, t: Strings) {
 }
 
 /** One line of a card: a crossing (or several in a row with the same name) and what you're likely to find. */
-private data class CrossingLine(val label: String, val count: Int, val etaSec: Long, val at: AtArrival, val waitSec: Int)
+private data class CrossingLine(val label: String, val crossing: Crossing, val count: Int, val etaSec: Long, val at: AtArrival, val waitSec: Int)
+
+/** Several crossings in a row with one name: "4 tracks near Bandel Junction", "2 tracks on GT Rd", "LC gate 23 (2 tracks)". */
+private fun CrossingLine.text(t: Strings): String {
+    if (count < 2) return label
+    val c = crossing
+    return when {
+        c.named -> t.tracksNamed(count, c.name)
+        c.road != null -> t.tracksOn(count, c.road)
+        c.name.isNotEmpty() -> t.tracksNear(count, c.name)
+        else -> t.tracks(count)
+    }
+}
 
 /**
  * The crossings of a way as simple lines, in order. Crossings in a row with the same name ("near Bandel Junction"
@@ -476,7 +488,7 @@ private fun crossingLines(o: Option, t: Strings): List<CrossingLine> {
         if (last != null && last.label == label) {
             val worse = if (a.waitSec > last.waitSec) a.at else last.at
             out[out.lastIndex] = last.copy(count = last.count + 1, at = worse, waitSec = maxOf(last.waitSec, a.waitSec))
-        } else out += CrossingLine(label, 1, a.etaSec, a.at, a.waitSec)
+        } else out += CrossingLine(label, a.crossing, 1, a.etaSec, a.at, a.waitSec)
     }
     return out
 }
@@ -512,7 +524,7 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                     Box(Modifier.padding(top = 5.dp).size(12.dp).clip(CircleShape).background(lc))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(if (line.count > 1) t.manyCrossings(line.count, line.label) else line.label,
+                        Text(line.text(t),
                             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text("~${GateEngine.fmt(line.etaSec)} · $state", style = MaterialTheme.typography.bodyMedium, color = lc, fontWeight = FontWeight.SemiBold)
                     }

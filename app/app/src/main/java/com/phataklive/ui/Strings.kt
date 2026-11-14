@@ -202,7 +202,10 @@ class Strings(lang: String) {
     val likelyOpen = t("likely open", "संभवतः खुला", "সম্ভবত খোলা")
     fun likelyClosedWait(m: Int) = t("likely closed, wait ~${mins(m)}", "संभवतः बंद, ~${mins(m)} इंतज़ार", "সম্ভবত বন্ধ, ~${mins(m)} অপেক্ষা")
     val noGate = t("bridge or underpass, no gate", "पुल या अंडरपास, फाटक नहीं", "ব্রিজ বা আন্ডারপাস, গেট নেই")
-    fun manyCrossings(n: Int, label: String) = t("$n × $label", "$n × $label", "$n × $label")
+    fun tracksNear(n: Int, st: String) = t("$n tracks near $st", "$st के पास $n पटरियाँ", "$st-এর কাছে $n টি লাইন")
+    fun tracksOn(n: Int, road: String) = t("$n tracks on $road", "$road पर $n पटरियाँ", "$road-এ $n টি লাইন")
+    fun tracksNamed(n: Int, name: String) = t("$name ($n tracks)", "$name ($n पटरियाँ)", "$name ($n টি লাইন)")
+    fun tracks(n: Int) = t("$n railway tracks", "$n रेल पटरियाँ", "$n টি রেল লাইন")
     val navStopShort = t("Google Maps will show a stop on the way. Just keep going.", "Google Maps रास्ते में एक स्टॉप दिखाएगा। बस चलते रहें।",
         "Google Maps পথে একটা স্টপ দেখাবে। শুধু চলতে থাকুন।")
     val navStopNote = t("Google Maps will show a stop just after this crossing. Don't stop there, just keep going.",
