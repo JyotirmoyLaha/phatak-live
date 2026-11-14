@@ -1,4 +1,5 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.phataklive.ui
 
@@ -36,6 +37,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -434,7 +442,9 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onSettings: ()
 private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onFindGate: () -> Unit, onClose: () -> Unit) {
     val c = Phatak.c
     ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).navigationBarsPadding()) {
+        // the sheet stops above the keyboard and scrolls, so the custom radius field and its note stay visible while typing
+        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp).navigationBarsPadding()) {
             Text(t.settings, style = MaterialTheme.typography.headlineSmall)
             SettingTitle(t.language, null)
             Segmented(listOf(Triple("English", "English", null), Triple("Hindi", "हिन्दी", null), Triple("Bengali", "বাংলা", null)),
@@ -464,6 +474,9 @@ private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
     var customOpen by rememberSaveable { mutableStateOf(isCustom) }
     var text by rememberSaveable { mutableStateOf(if (isCustom) "${s.radiusKm}" else "") }
     val keyboard = LocalSoftwareKeyboardController.current
+    val bring = remember { BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    val imeVisible = WindowInsets.isImeVisible
     val km = text.toIntOrNull()
     val valid = km != null && km in MIN_RADIUS_KM..MAX_RADIUS_KM
     val problem = when {
@@ -487,12 +500,16 @@ private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
         else { customOpen = false; vm.setRadius(v.toInt()) }
     }
     if (!customOpen) return
+    LaunchedEffect(focused, imeVisible, problem) {
+        if (focused) { delay(250); bring.bringIntoView() }   // after the keyboard has slid in
+    }
+    Column(Modifier.bringIntoViewRequester(bring)) {
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = text,
             // digits only (Hindi / Bengali digits become 0-9); 6 digits are plenty to say "too far" without overflowing
             onValueChange = { v -> text = v.mapNotNull { ch -> Character.digit(ch, 10).takeIf { it >= 0 }?.let { '0' + it } }.take(6).joinToString("") },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
             singleLine = true,
             placeholder = { Text(t.radiusCustomHint) },
             suffix = { Text("km") },
@@ -506,6 +523,7 @@ private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
             colors = ButtonDefaults.buttonColors(containerColor = Phatak.c.amber, contentColor = Color(0xFF1A1300))) { Text(t.apply) }
     }
     problem?.let { msg -> RadiusWarning(msg, action = if (km != null && km > MAX_RADIUS_KM) t.tabSearch else null, onAction = onFindGate) }
+    }
 }
 
 /** Yellow note under the custom radius field. */
