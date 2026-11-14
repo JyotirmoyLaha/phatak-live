@@ -57,6 +57,7 @@ sealed class Problem {
     data class PlaceNotFound(val query: String) : Problem()
     data object RouteFailed : Problem()
     data object NoCrossings : Problem()
+    data object TooFar : Problem()
 }
 
 /** Which place box of the Route tab a suggestion list belongs to. */
@@ -107,6 +108,8 @@ data class UiState(
     val routeProblem: Problem? = null,
     /** a trip notification was tapped: show the Route tab (one-shot) */
     val openRoute: Boolean = false,
+    /** the one-time Route safety notice was accepted */
+    val routeNoticeAccepted: Boolean = false,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -120,6 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lang = prefs.getString("lang", defaultLang())!!,
         radiusKm = prefs.getInt("radius", 10).coerceIn(MIN_RADIUS_KM, MAX_RADIUS_KM),
         theme = prefs.getString("theme", "auto")!!,
+        routeNoticeAccepted = prefs.getBoolean("route_notice_ok", false),
         routeMode = runCatching { GoogleDirections.Mode.valueOf(prefs.getString("route_mode", "")!!) }.getOrDefault(GoogleDirections.Mode.TWO_WHEELER),
     ))
     val state: StateFlow<UiState> = _state
@@ -464,17 +468,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         routeJob = viewModelScope.launch {
             _state.update { it.copy(routeStep = CrossingPlanner.Step.CROSSINGS, routeProblem = null, routePlan = null, routeOptions = emptyList()) }
             val plan = try {
-                planner.plan(from, s.routeFrom == null, to, s.routeMode, live) { step -> _state.update { it.copy(routeStep = step) } }
+                planner.plan(from, s.routeFrom == null, to, s.routeMode, live, s.user) { step -> _state.update { it.copy(routeStep = step) } }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: CrossingPlanner.TooFar) {
+                _state.update { it.copy(routeStep = null, routeProblem = Problem.TooFar) }
+                return@launch
             } catch (e: Exception) {
                 _state.update { it.copy(routeStep = null, routeProblem = Problem.RouteFailed) }
                 return@launch
             }
             val options = withContext(Dispatchers.Default) { planner.evaluate(plan, null, now()) }
             _state.update {
-                it.copy(routeStep = null, routePlan = plan, routeOptions = options,
-                    routeProblem = if (plan.legs.isEmpty()) Problem.NoCrossings else null)
+                // no crossing found: the plan itself says why (same side, or railway not checked)
+                it.copy(routeStep = null, routePlan = plan, routeOptions = options, routeProblem = null)
             }
         }
     }
@@ -489,6 +496,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val here = if (p.fromIsMe) _state.value.user else null
         val options = withContext(Dispatchers.Default) { planner.evaluate(p, here, now()) }
         _state.update { if (it.routePlan?.createdSec == plan.createdSec) it.copy(routePlan = p, routeOptions = options) else it }
+    }
+
+    fun acceptRouteNotice() {
+        prefs.edit().putBoolean("route_notice_ok", true).apply()
+        _state.update { it.copy(routeNoticeAccepted = true) }
     }
 
     fun requestOpenRoute() = _state.update { it.copy(openRoute = true) }

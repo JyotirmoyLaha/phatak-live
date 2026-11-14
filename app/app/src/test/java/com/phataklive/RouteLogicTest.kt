@@ -121,11 +121,37 @@ class RouteLogicTest {
     @Test fun probesSpreadAlongRailway() {
         val rail = listOf(LatLng(23.50, 87.7336), LatLng(23.40, 87.7336))   // ~11 km
         val all = CrossingPlanner.probePoints(listOf(rail)) { true }
-        assertEquals(14, all.size)                                          // capped, spread end to end
+        assertEquals(12, all.size)                                          // capped, spread end to end
         val few = CrossingPlanner.probePoints(listOf(rail)) { it.lat > 23.49 }
         assertEquals(4, few.size)                                           // ~1.1 km of corridor: at 0.15, 0.45, 0.75, 1.05 km
         // the same railway twice (two sections) adds no extra points
         assertEquals(few.size, CrossingPlanner.probePoints(listOf(rail, rail)) { it.lat > 23.49 }.size)
+    }
+
+    @Test fun crossingIsAGateUnlessClearlyABridge() {
+        val x = LatLng(23.49367, 87.73299)
+        fun off(m: Double) = LatLng(x.lat + m / 111_000.0, x.lng)
+        val gate = listOf("Railway LC gate no - 4/B/T" to off(10.0))
+        val rob = listOf(Triple("Guskara ROB", off(20.0), CrossingKind.OVERBRIDGE))
+        // a gate name nearby: a gate, with its name
+        val g = CrossingPlanner.classify(x, gate, rob, "Guskara")
+        assertEquals(CrossingKind.GATE, g.kind); assertEquals("Railway LC gate no - 4/B/T", g.name); assertEquals(true, g.named)
+        // a bridge right at the crossing and no gate near: a bridge
+        assertEquals(CrossingKind.OVERBRIDGE, CrossingPlanner.classify(x, emptyList(), rob, "Guskara").kind)
+        // a new bridge beside an old gate (200 m away): still a gate, the safe answer
+        assertEquals(CrossingKind.GATE, CrossingPlanner.classify(x, listOf("LC 23" to off(200.0)), rob, "Guskara").kind)
+        // a bridge name 100 m away is not this crossing: an unnamed gate near the station
+        val u = CrossingPlanner.classify(x, emptyList(), listOf(Triple("Guskara ROB", off(100.0), CrossingKind.OVERBRIDGE)), "Guskara")
+        assertEquals(CrossingKind.GATE, u.kind); assertEquals(false, u.named); assertEquals("Guskara", u.name)
+        // bridges still being built never count
+        assertNull(CrossingPlanner.bridgeKind("ROB under construction", emptyList(), true))
+    }
+
+    @Test fun startOnTheRailwayIsDetected() {
+        val rail = listOf(LatLng(23.50, 87.7336), LatLng(23.48, 87.7336))
+        assertEquals(0.011, Lines.distanceKm(LatLng(23.4937, 87.73349), listOf(rail)), 0.002)   // a gate pin: ~11 m
+        assertEquals(true, Lines.distanceKm(LatLng(23.4906, 87.7376), listOf(rail)) > 0.3)      // a shop 400 m away
+        assertEquals(true, Lines.distanceKm(LatLng(23.51, 87.7336), listOf(rail)) > 1.0)        // past the end of the line
     }
 
     @Test fun bridgeNames() {

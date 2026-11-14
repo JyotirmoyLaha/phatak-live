@@ -121,9 +121,10 @@ private fun openNavigation(ctx: Context, plan: Plan, leg: Leg) {
 }
 
 /**
- * Route tab: from (my location, a typed place, or a gate I'm at) to a destination; every gate, overbridge and
- * underpass on the way ranked by the whole trip time including the wait at each gate. Navigate starts trip alerts and
- * hands over to Google Maps; Map shows Google's map inside the app.
+ * Route tab: from my location (or a typed place) to a destination; the ways across the railway that Google Maps
+ * drives, ranked by the whole trip time including the likely wait at each gate. Navigate starts trip alerts and hands
+ * over to Google Maps; Map shows the way on a simple map drawn from Google's lines. A one-time safety notice must be
+ * accepted first.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -138,8 +139,7 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     val tripOfPlan = trip?.takeIf { plan != null && it.plan.createdSec == plan.createdSec }
     val options = tripOfPlan?.options?.takeIf { it.isNotEmpty() } ?: s.routeOptions
     var mapCrossing by remember { mutableStateOf<Crossing?>(null) }
-    // a few ways only: the best, and one or two others
-    // what is typed in the two boxes; a picked place (or "I'm at" gate) fills its box
+    // what is typed in the two boxes; a picked place fills its box
     var fromText by rememberSaveable { mutableStateOf(s.routeFrom?.name ?: "") }
     var toText by rememberSaveable { mutableStateOf(s.routeTo?.name ?: "") }
     LaunchedEffect(s.routeFrom) { s.routeFrom?.let { fromText = it.name } }
@@ -171,6 +171,11 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
             Text(t.routeTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.routeSub, style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(top = 4.dp))
         }
+        // nothing to plan with until the safety notice is accepted (once)
+        if (!s.routeNoticeAccepted) {
+            item { SafetyNotice(t, vm::acceptRouteNotice) }
+            return@LazyColumn
+        }
         item {
             val mine = listOfNotNull(t.myLocation, s.address?.takeIf { it.isNotBlank() }).joinToString(" · ")
             PlaceBox(fromText, t.from, mine, if (s.routeFrom == null) Icons.Rounded.MyLocation else Icons.Rounded.Place,
@@ -179,26 +184,6 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
                 onClear = { fromText = ""; vm.pickRoutePlace(RouteField.FROM, null) })
             if (s.routeSuggestFor == RouteField.FROM && s.routeSuggest.isNotEmpty())
                 PlaceSuggestions(s.routeSuggest, s) { focus.clearFocus(); vm.pickRoutePlace(RouteField.FROM, it) }
-            // "I'm at" a gate found nearby: the usual case at a closed gate
-            if (s.routeFrom == null && s.gates.isNotEmpty()) {
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(t.atGate, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.align(Alignment.CenterVertically))
-                    s.gates.take(3).forEach { g ->
-                        val l = look(g.state, t)
-                        Row(
-                            Modifier.clip(RoundedCornerShape(50)).glass(RoundedCornerShape(50), strong = true)
-                                .clickable { vm.pickRoutePlace(RouteField.FROM, Place(g.gate.name, null, g.gate.pos)) }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(l.fg))
-                            Spacer(Modifier.width(6.dp))
-                            Text(g.gate.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 160.dp))
-                        }
-                    }
-                }
-            }
         }
         item {
             PlaceBox(toText, t.to, t.toHint, Icons.Rounded.Flag,
@@ -232,7 +217,10 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
         s.routeProblem?.let { item { EmptyNote(problemText(it, t)) } }
         if (s.routeStep != null) items(3) { Skeleton(150.dp) }
         if (plan != null && s.routeStep == null) {
+            if (plan.startOnRailway) item { EmptyNote(t.startOnRailway) }
             if (plan.sameSide) item { EmptyNote(t.sameSide) }
+            else if (plan.legs.isEmpty() && !plan.railsChecked) item { EmptyNote(t.railsNotChecked) }
+            // a few ways only: the best, and up to two others
             items(options.take(3), key = { "r" + it.leg.crossing.pos }) { o ->
                 OptionCard(o, best = o === options.first(), t = t,
                     tripOn = tripOfPlan?.crossing == o.leg.crossing,
@@ -249,15 +237,58 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     }
 
     val shown = mapCrossing
-    if (shown != null && plan != null) {
+    val shownLeg = plan?.legs?.firstOrNull { it.crossing == shown }
+    if (shown != null && plan != null && shownLeg != null) {
         val o = options.firstOrNull { it.leg.crossing == shown }
-        val stop = plan.legs.firstOrNull { it.crossing == shown }?.navStop
         RouteMapDialog(
-            url = GoogleDirections.webUrl(listOfNotNull(plan.from.pos, stop, plan.to.pos), plan.mode),
-            title = shown.label(t), t = t,
+            plan = plan, leg = shownLeg, option = o, t = t,
             onNavigate = { mapCrossing = null; navigate(shown) },
             onClose = { mapCrossing = null },
-        ) { if (o != null) StatusLine(o, t) }
+        ) { if (o != null) { StatusLine(o, t); LaterLines(o, t) } }
+    }
+}
+
+/** The one-time notice before Route can be used: estimates only, always obey the gate. */
+@Composable
+private fun SafetyNotice(t: Strings, onAccept: () -> Unit) {
+    val c = Phatak.c
+    GlassCard(Modifier.fillMaxWidth(), radius = 22.dp, tint = c.soon) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.WarningAmber, null, tint = c.soon)
+                Spacer(Modifier.width(10.dp))
+                Text(t.noticeTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+            listOf(t.notice1, t.notice2, t.notice3, t.notice4).forEach {
+                Text("•  $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+            }
+            Button(onClick = onAccept, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(50.dp), shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300))) { Text(t.noticeAccept) }
+        }
+    }
+}
+
+/** The crossings after the first one on the same road, each with what you're likely to find there. */
+@Composable
+private fun LaterLines(o: Option, t: Strings) {
+    if (o.later.isEmpty()) return
+    val c = Phatak.c
+    Text(t.alsoOnTheWay, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
+    o.later.forEach { l ->
+        val col = if (l.at == AtArrival.CLOSED) c.closed else c.open
+        val text = when (l.at) {
+            AtArrival.CLOSED -> t.closedWait(waitMin(l.waitSec), l.opensAt?.let { GateEngine.fmt(it) } ?: "?")
+            AtArrival.OPEN -> t.openOnArrival
+            AtArrival.NO_GATE -> t.neverCloses
+        }
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.padding(top = 5.dp).size(8.dp).clip(CircleShape).background(col))
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(l.crossing.label(t), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text, style = MaterialTheme.typography.bodySmall, color = col)
+            }
+        }
     }
 }
 
@@ -400,6 +431,7 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                 }
             }
             if (o.at == AtArrival.CLOSED) o.trains.take(2).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
+            LaterLines(o, t)
             // Google Maps shows our stop just past the crossing as a stop: say so, so nobody pulls over there
             if (o.leg.navStop != null) Text(t.navStopNote, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

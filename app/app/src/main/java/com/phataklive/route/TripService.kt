@@ -49,8 +49,14 @@ object Trip {
         val passed: Boolean,
         val startedSec: Long,
         val updatedSec: Long,
+        /** which crossing of the chosen way is next (0 = the first); the ones before it are behind */
+        val nextIdx: Int = 0,
     ) {
         val chosen: Option? get() = options.firstOrNull { it.leg.crossing == crossing }
+        /** the crossing ahead, with what you're likely to find there */
+        val ahead: AtCrossing? get() = chosen?.let { o ->
+            if (nextIdx == 0) AtCrossing(o.leg.crossing, o.etaSec, o.waitSec, o.at, o.opensAt) else o.later.getOrNull(nextIdx - 1)
+        }
     }
 
     private val _state = MutableStateFlow<State?>(null)
@@ -73,9 +79,10 @@ object Trip {
 
 /**
  * Foreground service (type location) that keeps a trip's crossing status up to date while the user drives with
- * Google Maps: every [TICK_MS] it re-ranks the crossings from the phone's position, refreshes live trains every few
- * minutes, and alerts when the chosen gate will be closed on arrival or another way becomes clearly faster.
- * It ends by itself once the crossing is behind, near the destination, or after [MAX_TRIP_SEC].
+ * Google Maps: every [TICK_MS] it works out each crossing on the chosen way again from the phone's position, refreshes
+ * live trains every few minutes, and alerts once per crossing when its gate is likely to be closed on arrival.
+ * Nothing else pops up while driving. It ends by itself once every crossing on the way is behind, near the destination,
+ * or after [MAX_TRIP_SEC].
  */
 class TripService : Service() {
 
@@ -92,17 +99,16 @@ class TripService : Service() {
         /** passed: came within this of the crossing, then moved [PASSED_AWAY_KM] further away */
         private const val PASSED_NEAR_KM = 0.15
         private const val PASSED_AWAY_KM = 0.25
-        /** another way is suggested only when it saves at least this */
-        private const val SWITCH_SAVES_SEC = 180
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var loop: Job? = null
     private lateinit var planner: CrossingPlanner
     @Volatile private var here: LatLng? = null
+    /** closest the phone has come to the crossing ahead */
     private var minKm = Double.MAX_VALUE
-    private var alertedClosed = false
-    private var alertedSwitch: String? = null
+    /** crossings (by index on the way) already alerted as likely closed */
+    private val alertedClosed = HashSet<Int>()
     /** the trip the counters above belong to (a new Navigate replaces the trip) */
     private var tripStarted = 0L
     private val listener = LocationListener { l -> here = LatLng(l.latitude, l.longitude) }
@@ -122,7 +128,7 @@ class TripService : Service() {
         val st = Trip.state.value
         if (st == null) { finish(); return START_NOT_STICKY }
         if (st.startedSec != tripStarted) {
-            tripStarted = st.startedSec; minKm = Double.MAX_VALUE; alertedClosed = false; alertedSwitch = null
+            tripStarted = st.startedSec; minKm = Double.MAX_VALUE; alertedClosed.clear()
         }
         channels()
         try {
@@ -165,15 +171,18 @@ class TripService : Service() {
         if (now - plan.liveFetchedSec >= LIVE_EVERY_SEC) plan = runCatching { planner.refreshLive(plan) }.getOrDefault(plan.copy(liveFetchedSec = now))
         val pos = here
         val options = planner.evaluate(plan, pos, now)
-        var passed = false
-        if (pos != null) {
-            val d = Geo.km(pos, st.crossing.pos)
+        val crossings = options.firstOrNull { it.leg.crossing == st.crossing }?.leg?.crossings ?: listOf(st.crossing)
+        var idx = st.nextIdx
+        if (pos != null && idx < crossings.size) {
+            // came close to the crossing ahead and then moved away from it: it is behind, watch the next one
+            val d = Geo.km(pos, crossings[idx].pos)
             minKm = minOf(minKm, d)
-            passed = (minKm < PASSED_NEAR_KM && d > minKm + PASSED_AWAY_KM) || Geo.km(pos, plan.to.pos) < 0.2
+            if (minKm < PASSED_NEAR_KM && d > minKm + PASSED_AWAY_KM) { idx++; minKm = Double.MAX_VALUE }
         }
+        val passed = idx >= crossings.size || (pos != null && Geo.km(pos, plan.to.pos) < 0.2)
         val cur = Trip.state.value ?: return finish()   // stopped meanwhile
         if (cur.startedSec != st.startedSec) return       // a new trip replaced this one: its own tick follows
-        val next = st.copy(plan = plan, options = options, here = pos, passed = passed, updatedSec = now)
+        val next = st.copy(plan = plan, options = options, here = pos, passed = passed, updatedSec = now, nextIdx = idx)
         Trip.update(next)
         val t = strings()
         val nm = getSystemService(NotificationManager::class.java)
@@ -183,19 +192,12 @@ class TripService : Service() {
             return finish()
         }
         nm.notify(ID_TRIP, ongoing(next, t))
-        val chosen = next.chosen ?: return
-        // the gate you are heading for will be down when you get there
-        if (chosen.at == AtArrival.CLOSED && !alertedClosed) {
-            alertedClosed = true
-            nm.notify(ID_ALERT, alert(t.closedOnArrival(chosen.leg.crossing.label(t), chosen.waitSec / 60), chosen.opensAt?.let { t.opensAtTime(GateEngine.fmt(it)) }))
-        } else if (chosen.at != AtArrival.CLOSED) alertedClosed = false
-        // another way is now clearly faster
-        val best = options.firstOrNull()
-        val bestName = best?.leg?.crossing?.label(t)
-        if (best != null && best.leg.crossing != st.crossing && chosen.totalSec - best.totalSec >= SWITCH_SAVES_SEC &&
-            alertedSwitch != bestName) {
-            alertedSwitch = bestName
-            nm.notify(ID_ALERT, alert(t.switchTo(bestName!!, (chosen.totalSec - best.totalSec) / 60), null))
+        // the gate ahead is likely to be down when you get there: one alert per crossing
+        val ahead = next.ahead ?: return
+        if (ahead.at == AtArrival.CLOSED && idx !in alertedClosed) {
+            alertedClosed += idx
+            nm.notify(ID_ALERT, alert(t.closedOnArrival(ahead.crossing.label(t), (ahead.waitSec + 59) / 60),
+                ahead.opensAt?.let { t.opensAtTime(GateEngine.fmt(it)) }))
         }
     }
 
@@ -216,14 +218,15 @@ class TripService : Service() {
     )
 
     private fun ongoing(st: Trip.State, t: Strings): Notification {
-        val o = st.chosen
-        val name = st.crossing.label(t)
-        val title = if (o == null) t.tripOn(name) else when (o.at) {
-            AtArrival.CLOSED -> "$name · ${t.closedShort(o.waitSec / 60)}"
+        val a = st.ahead
+        val name = (a?.crossing ?: st.crossing).label(t)
+        val title = if (a == null) t.tripOn(name) else when (a.at) {
+            AtArrival.CLOSED -> "$name · ${t.closedShort((a.waitSec + 59) / 60)}"
             AtArrival.OPEN -> "$name · ${t.openOnArrival}"
             AtArrival.NO_GATE -> "$name · ${t.neverCloses}"
         }
-        val body = o?.let { t.reachIn(it.toCrossingSec / 60, GateEngine.fmt(it.etaSec)) } ?: t.tripStarting
+        val left = a?.let { ((it.etaSec - System.currentTimeMillis() / 1000).coerceAtLeast(0) + 30).toInt() / 60 }
+        val body = if (a != null && left != null) t.reachIn(left, GateEngine.fmt(a.etaSec)) else t.tripStarting
         val stop = PendingIntent.getService(this, 1, Intent(this, TripService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CH_TRIP)
             .setSmallIcon(R.drawable.ic_stat_gate)

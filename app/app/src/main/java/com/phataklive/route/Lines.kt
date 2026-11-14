@@ -31,6 +31,19 @@ object Lines {
         return line.last()
     }
 
+    /** Shortest distance from [p] to any of [lines], in km (flat local frame: fine at these distances). */
+    fun distanceKm(p: LatLng, lines: List<List<LatLng>>): Double {
+        var best = Double.MAX_VALUE
+        for (line in lines) {
+            if (line.size == 1) best = minOf(best, Geo.km(p, line[0]))
+            for (i in 0 until line.size - 1) {
+                val (t, off) = Geo.project(p, line[i], line[i + 1])
+                best = minOf(best, if (t in 0.0..1.0) off else minOf(Geo.km(p, line[i]), Geo.km(p, line[i + 1])))
+            }
+        }
+        return best
+    }
+
     /** Where a road meets the railway: the point, and how far along the road it is (km). */
     data class Hit(val pos: LatLng, val atKm: Double)
 

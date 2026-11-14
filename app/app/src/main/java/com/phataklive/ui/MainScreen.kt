@@ -724,6 +724,7 @@ internal fun problemText(p: Problem, t: Strings): String = when (p) {
     is Problem.PlaceNotFound -> t.placeNotFound(p.query)
     Problem.RouteFailed -> t.routeFailed
     Problem.NoCrossings -> t.noCrossings
+    Problem.TooFar -> t.tooFar(com.phataklive.route.CrossingPlanner.MAX_TRIP_KM.toInt())
 }
 
 // ===================================================================================== gates
