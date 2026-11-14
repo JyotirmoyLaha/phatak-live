@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for trip alerts: a level-crossing barrier on its post (white; Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3,9h2v12H3z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M2,20h4v2H2z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M5,9h17v4H5z M8,10v2h3v-2z M14,10v2h3v-2z" android:fillType="evenOdd" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M4,3a2,2 0,1 1,0 4a2,2 0,1 1,0 -4z" />
+</vector>

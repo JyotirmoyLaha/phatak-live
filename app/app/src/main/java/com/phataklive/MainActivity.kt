@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.phataklive.route.TripService
 import com.phataklive.update.UpdateChecker
 import kotlinx.coroutines.launch
 import com.phataklive.ui.MainScreen
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // once per launch: drop any old downloaded update, then look for a newer release on GitHub
+        if (intent?.getBooleanExtra(TripService.EXTRA_OPEN_ROUTE, false) == true) vm.requestOpenRoute()
         if (savedInstanceState == null) lifecycleScope.launch {
             UpdateChecker.clearCache(this@MainActivity)
             UpdateChecker.check()
@@ -76,6 +78,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /** A trip notification tapped while the app is open: show the Route tab. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(TripService.EXTRA_OPEN_ROUTE, false)) vm.requestOpenRoute()
     }
 
     override fun onResume() {

@@ -55,6 +55,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AltRoute
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
@@ -184,6 +185,8 @@ fun MainScreen(
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    // a trip notification was tapped
+    LaunchedEffect(s.openRoute) { if (s.openRoute) { tab = 3; vm.routeOpened() } }
     // everything under the bottom bar is the blur source: lists scroll behind the frosted bar
     val haze = remember { HazeState() }
     // glass panels are not Surfaces, so text colour comes from here (otherwise it would default to black)
@@ -197,9 +200,11 @@ fun MainScreen(
                 // pull down to refresh: search tabs repeat their last search, otherwise the nearby scan runs again
                 val repeatGate = which == 1 && s.gateQuery.isNotBlank()
                 val repeatTrain = which == 2 && s.trainQuery.isNotBlank()
+                val repeatRoute = which == 3 && s.routeTo != null
                 val refreshing = when {
                     repeatGate -> s.gateSearching
                     repeatTrain -> s.trainSearching
+                    repeatRoute -> s.routeStep != null
                     else -> s.loading
                 }
                 PullToRefreshBox(
@@ -208,6 +213,7 @@ fun MainScreen(
                         when {
                             repeatGate -> vm.searchGate(s.gateQuery)
                             repeatTrain -> vm.searchTrain(s.trainQuery)
+                            repeatRoute -> vm.planRoute()
                             else -> vm.refresh()
                         }
                     },
@@ -216,7 +222,8 @@ fun MainScreen(
                     when (which) {
                         0 -> NearbyTab(s, t, vm, onRequestLocation, onOpenLocationSettings)
                         1 -> GateSearchTab(s, t, vm)
-                        else -> TrainTab(s, t, vm)
+                        2 -> TrainTab(s, t, vm)
+                        else -> RouteTab(s, t, vm)
                     }
                 }
             }
@@ -231,7 +238,7 @@ fun MainScreen(
 
 /** List padding that keeps the last card clear of the floating bottom bar. */
 @Composable
-private fun listPadding(): PaddingValues {
+internal fun listPadding(): PaddingValues {
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     return PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp + nav)
 }
@@ -265,7 +272,7 @@ private fun BottomBar(tab: Int, t: Strings, haze: HazeState, modifier: Modifier,
     val c = Phatak.c
     val shape = RoundedCornerShape(26.dp)
     val items = listOf(Triple(t.tabNearby, Icons.Rounded.Traffic, 0), Triple(t.tabSearch, Icons.Rounded.Search, 1),
-        Triple(t.tabTrains, Icons.Rounded.DirectionsRailway, 2))
+        Triple(t.tabTrains, Icons.Rounded.DirectionsRailway, 2), Triple(t.tabRoute, Icons.Rounded.AltRoute, 3))
     Row(
         modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().height(66.dp)
             .clip(shape)
@@ -568,7 +575,7 @@ private fun SettingTitle(title: String, hint: String?) {
 
 /** One choice out of a few, as a glass track with the chosen option lit in signal amber. */
 @Composable
-private fun Segmented(options: List<Triple<String, String, ImageVector?>>, selected: String, onSelect: (String) -> Unit) {
+internal fun Segmented(options: List<Triple<String, String, ImageVector?>>, selected: String, onSelect: (String) -> Unit) {
     val c = Phatak.c
     Row(
         Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp), strong = true).padding(4.dp).selectableGroup(),
@@ -618,7 +625,7 @@ private fun LivePulse(color: Color) {
 // ===================================================================================== nearby
 
 @Composable
-private fun nowSec(): Long {
+internal fun nowSec(): Long {
     val v by produceState(System.currentTimeMillis() / 1000) { while (true) { delay(10_000); value = System.currentTimeMillis() / 1000 } }
     return v
 }
@@ -648,7 +655,7 @@ private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocati
 }
 
 @Composable
-private fun Banner(icon: ImageVector, title: String?, body: String, action: String?, onAction: (() -> Unit)?) {
+internal fun Banner(icon: ImageVector, title: String?, body: String, action: String?, onAction: (() -> Unit)?) {
     val c = Phatak.c
     Row(
         Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp), tint = c.soon).padding(14.dp),
@@ -699,29 +706,32 @@ private fun SectionTitle(title: String, sub: String) {
 }
 
 @Composable
-private fun EmptyNote(text: String) {
+internal fun EmptyNote(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp)).padding(16.dp))
 }
 
 @Composable
-private fun Skeleton(height: androidx.compose.ui.unit.Dp) {
+internal fun Skeleton(height: androidx.compose.ui.unit.Dp) {
     val a by rememberInfiniteTransition(label = "sk").animateFloat(0.45f, 0.9f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
     Box(Modifier.fillMaxWidth().height(height).graphicsLayer { alpha = a }.glass(RoundedCornerShape(22.dp)))
 }
 
-private fun problemText(p: Problem, t: Strings): String = when (p) {
+internal fun problemText(p: Problem, t: Strings): String = when (p) {
     Problem.WaitingForLocation -> t.waitingLocation
     is Problem.NoGateFound -> t.noGateFound(p.query)
     is Problem.NoTrainFound -> t.noTrainFound(p.query)
+    is Problem.PlaceNotFound -> t.placeNotFound(p.query)
+    Problem.RouteFailed -> t.routeFailed
+    Problem.NoCrossings -> t.noCrossings
 }
 
 // ===================================================================================== gates
 
-private data class Look(val fg: Color, val bg: Color, val label: String)
+internal data class Look(val fg: Color, val bg: Color, val label: String)
 
 @Composable
-private fun look(st: GateState, t: Strings): Look {
+internal fun look(st: GateState, t: Strings): Look {
     val c = Phatak.c
     return when (st) {
         GateState.CLOSED -> Look(c.closed, c.closedBg, t.closed)
@@ -739,7 +749,7 @@ private fun countdown(g: GateStatus, t: Strings, now: Long): Pair<String, String
 }
 
 @Composable
-private fun StateLight(color: Color, pulsing: Boolean, size: androidx.compose.ui.unit.Dp) {
+internal fun StateLight(color: Color, pulsing: Boolean, size: androidx.compose.ui.unit.Dp) {
     val scale by rememberInfiniteTransition(label = "light").animateFloat(1f, 1.9f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "s")
     val alpha by rememberInfiniteTransition(label = "lighta").animateFloat(0.45f, 0f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "a")
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size * 2)) {
@@ -809,7 +819,7 @@ private fun WindowBar(close: Long, open: Long, now: Long, color: Color, t: Strin
 }
 
 @Composable
-private fun TrainLine(no: String, name: String, time: Long, delayMin: Int, src: TimeSource, t: Strings) {
+internal fun TrainLine(no: String, name: String, time: Long, delayMin: Int, src: TimeSource, t: Strings) {
     val c = Phatak.c
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.DirectionsRailway, null, tint = c.muted, modifier = Modifier.size(18.dp))
@@ -823,7 +833,7 @@ private fun TrainLine(no: String, name: String, time: Long, delayMin: Int, src: 
 }
 
 @Composable
-private fun DelayChip(delayMin: Int, src: TimeSource, t: Strings) {
+internal fun DelayChip(delayMin: Int, src: TimeSource, t: Strings) {
     val c = Phatak.c
     val (fg, txt) = when {
         src == TimeSource.SCHEDULED -> c.muted to t.timetableOnly
@@ -835,7 +845,7 @@ private fun DelayChip(delayMin: Int, src: TimeSource, t: Strings) {
 }
 
 @Composable
-private fun SourceChip(verified: Boolean, t: Strings) {
+internal fun SourceChip(verified: Boolean, t: Strings) {
     val c = Phatak.c
     val col = if (verified) c.live else c.muted
     Row(Modifier.clip(RoundedCornerShape(50)).background(col.copy(alpha = 0.14f)).padding(horizontal = 9.dp, vertical = 4.dp),

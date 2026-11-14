@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * Unofficial and undocumented: the layout was verified on 2026-11-13 and can change.
  */
 object GoogleMaps {
-    private val http = OkHttpClient.Builder()
+    internal val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()

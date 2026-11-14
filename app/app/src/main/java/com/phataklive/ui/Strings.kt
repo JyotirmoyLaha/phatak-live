@@ -9,6 +9,7 @@ class Strings(lang: String) {
     val tabNearby = t("Nearby", "आसपास", "কাছাকাছি")
     val tabSearch = t("Find gate", "फाटक खोजें", "গেট খুঁজুন")
     val tabTrains = t("Trains", "ट्रेनें", "ট্রেন")
+    val tabRoute = t("Route", "रास्ता", "রাস্তা")
 
     // onboarding / permission
     val heroTitle = t("Know before you reach the phatak", "फाटक पहुँचने से पहले जानें", "ফাটকে পৌঁছানোর আগেই জানুন")
@@ -139,6 +140,81 @@ class Strings(lang: String) {
         "Phatak Live আপনার চারপাশে ১০০ km পর্যন্ত খুঁজতে পারে। দূরের নির্দিষ্ট কোনো শহর বা স্টেশনের জন্য \"গেট খুঁজুন\"-এ খুঁজুন।")
     val radiusTooSmall = t("Enter a distance from 1 to 100 km.", "1 से 100 km के बीच की दूरी लिखें।", "১ থেকে ১০০ km-এর মধ্যে দূরত্ব লিখুন।")
     val done = t("Done", "ठीक है", "ঠিক আছে")
+
+    // route: best way across the railway
+    val routeTitle = t("Best crossing", "पटरी पार करने का सबसे अच्छा रास्ता", "লাইন পার হওয়ার সেরা পথ")
+    val routeSub = t("Where are you going? Phatak Live compares the rail gates, overbridges and underpasses on the way, with the wait at each gate at the minute you get there.",
+        "कहाँ जा रहे हैं? Phatak Live रास्ते के रेल फाटक, ओवरब्रिज और अंडरपास की तुलना करता है, और बताता है कि आपके पहुँचने के समय हर फाटक पर कितना इंतज़ार होगा।",
+        "কোথায় যাচ্ছেন? Phatak Live পথের রেল গেট, ওভারব্রিজ আর আন্ডারপাস মিলিয়ে দেখে, আর আপনি যখন পৌঁছাবেন তখন প্রতিটি গেটে কত অপেক্ষা হবে তা জানায়।")
+    val from = t("From", "कहाँ से", "কোথা থেকে")
+    val to = t("To", "कहाँ तक", "কোথায়")
+    val myLocation = t("My location", "मेरी लोकेशन", "আমার লোকেশন")
+    val fromHint = t("Place, gate or station", "जगह, फाटक या स्टेशन", "জায়গা, গেট বা স্টেশন")
+    val toHint = t("Where to? e.g. hospital, market, town", "कहाँ जाना है? जैसे अस्पताल, बाज़ार, शहर", "কোথায় যাবেন? যেমন হাসপাতাল, বাজার, শহর")
+    val atGate = t("I'm at", "मैं यहाँ हूँ", "আমি আছি")
+    val modeBike = t("Two-wheeler", "दोपहिया", "টু-হুইলার")
+    val modeCar = t("Car", "कार", "গাড়ি")
+    val modeWalk = t("Walk", "पैदल", "হেঁটে")
+    val findBest = t("Find best crossing", "सबसे अच्छा रास्ता खोजें", "সেরা পথ খুঁজুন")
+    val stepCrossings = t("Finding gates and bridges on the way…", "रास्ते के फाटक और पुल खोज रहे हैं…", "পথের গেট আর ব্রিজ খোঁজা হচ্ছে…")
+    val stepRoutes = t("Checking each road on Google Maps…", "Google Maps पर हर रास्ता जाँच रहे हैं…", "Google Maps-এ প্রতিটি পথ দেখা হচ্ছে…")
+    val stepTrains = t("Checking live trains at each gate…", "हर फाटक की लाइव ट्रेनें जाँच रहे हैं…", "প্রতিটি গেটের লাইভ ট্রেন দেখা হচ্ছে…")
+    val best = t("BEST", "सबसे अच्छा", "সেরা")
+    val googleWay = t("Google's usual way", "Google का सामान्य रास्ता", "Google-এর সাধারণ পথ")
+    val kindGate = t("Rail gate", "रेल फाटक", "রেল গেট")
+    val kindOver = t("Overbridge", "ओवरब्रिज", "ওভারব্রিজ")
+    val kindUnder = t("Underpass", "अंडरपास", "আন্ডারপাস")
+    val kindFoot = t("Foot overbridge", "फुट ओवरब्रिज", "ফুট ওভারব্রিজ")
+    /** "1 h 5 min" as an amount (not "in 5 min") */
+    fun mins(m: Int) = if (m < 60) t("$m min", "$m मिनट", "$m মিনিট")
+        else if (m % 60 == 0) t("${m / 60} h", "${m / 60} घंटा", "${m / 60} ঘণ্টা")
+        else t("${m / 60} h ${m % 60} min", "${m / 60} घंटा ${m % 60} मिनट", "${m / 60} ঘণ্টা ${m % 60} মিনিট")
+    fun total(m: Int) = t("${mins(m)} in all", "कुल ${mins(m)}", "মোট ${mins(m)}")
+    fun reachIn(m: Int, time: String) = if (m <= 0) t("You're at it now", "आप अभी यहीं हैं", "আপনি এখন এখানেই")
+        else t("You reach it in ${mins(m)} (~$time)", "${mins(m)} में पहुँचेंगे (~$time)", "${mins(m)}-এ পৌঁছাবেন (~$time)")
+    val openOnArrival = t("Open when you get there", "पहुँचने पर खुला मिलेगा", "পৌঁছালে খোলা পাবেন")
+    fun nextCloseAt(time: String) = t("closes next at ~$time", "अगली बार ~$time पर बंद होगा", "পরের বার ~$time-এ বন্ধ হবে")
+    fun closedWait(m: Int, time: String) = t("Closed when you get there: wait ~${mins(m)}, opens ~$time",
+        "पहुँचने पर बंद मिलेगा: ~${mins(m)} इंतज़ार, ~$time पर खुलेगा",
+        "পৌঁছালে বন্ধ পাবেন: ~${mins(m)} অপেক্ষা, ~$time-এ খুলবে")
+    fun closedShort(m: Int) = t("closed, wait ~${mins(m)}", "बंद, ~${mins(m)} इंतज़ार", "বন্ধ, ~${mins(m)} অপেক্ষা")
+    val neverCloses = t("No gate: never closes for trains", "फाटक नहीं: ट्रेन के लिए कभी बंद नहीं होता", "গেট নেই: ট্রেনের জন্য কখনো বন্ধ হয় না")
+    val navigateBtn = t("Navigate", "नेविगेट करें", "নেভিগেট করুন")
+    val mapBtn = t("Map", "नक्शा", "ম্যাপ")
+    fun directFaster(m: Int) = t("Google's fastest road takes ${mins(m)}. It may not cross the railway, or it crosses at a place that has no name on the map.",
+        "Google का सबसे तेज़ रास्ता ${mins(m)} का है। हो सकता है वह पटरी पार न करे, या ऐसी जगह से पार करे जिसका नक्शे पर नाम नहीं है।",
+        "Google-এর সবচেয়ে দ্রুত পথে ${mins(m)} লাগে। হয়তো সেটি লাইন পার হয় না, বা এমন জায়গা দিয়ে পার হয় যার ম্যাপে নাম নেই।")
+    val noCrossings = t("No rail gate, overbridge or underpass found on the map between these places.",
+        "इन जगहों के बीच नक्शे पर कोई रेल फाटक, ओवरब्रिज या अंडरपास नहीं मिला।",
+        "এই জায়গাগুলোর মধ্যে ম্যাপে কোনো রেল গেট, ওভারব্রিজ বা আন্ডারপাস পাওয়া যায়নি।")
+    val routeFailed = t("Couldn't get routes from Google Maps. Check your internet and try again.",
+        "Google Maps से रास्ता नहीं मिला। इंटरनेट जाँचें और फिर कोशिश करें।",
+        "Google Maps থেকে পথ পাওয়া যায়নি। ইন্টারনেট দেখে আবার চেষ্টা করুন।")
+    fun placeNotFound(q: String) = t("Couldn't find “$q”. Try another name.", "“$q” नहीं मिला। कोई दूसरा नाम लिखें।", "“$q” পাওয়া যায়নি। অন্য নাম লিখুন।")
+    val routeSafety = t("Never cross a closed gate. Gate times are estimates and goods trains are not shown.",
+        "बंद फाटक कभी पार न करें। फाटक का समय अनुमानित है और मालगाड़ियाँ इसमें नहीं दिखतीं।",
+        "বন্ধ গেট কখনো পার হবেন না। গেটের সময় আনুমানিক, আর মালগাড়ি এখানে দেখানো হয় না।")
+    fun tripOn(name: String) = t("Trip alerts on · via $name", "यात्रा अलर्ट चालू · $name से", "যাত্রার অ্যালার্ট চালু · $name দিয়ে")
+    val tripAlertsOn = t("Trip alerts on", "यात्रा अलर्ट चालू", "যাত্রার অ্যালার্ট চালু")
+    val tripOnSub = t("Updates every 30 seconds from your GPS, also while you drive with Google Maps.",
+        "आपके GPS से हर 30 सेकंड में अपडेट, Google Maps से चलाते समय भी।",
+        "আপনার GPS থেকে প্রতি ৩০ সেকেন্ডে আপডেট, Google Maps দিয়ে চালানোর সময়ও।")
+    val tripStarting = t("Getting your position…", "आपकी पोज़िशन ले रहे हैं…", "আপনার অবস্থান নেওয়া হচ্ছে…")
+    val stopAlerts = t("Stop alerts", "अलर्ट बंद करें", "অ্যালার্ট বন্ধ করুন")
+    val tripPassed = t("You've crossed the railway. Trip alerts stopped.", "आपने पटरी पार कर ली। यात्रा अलर्ट बंद।", "আপনি লাইন পার হয়েছেন। যাত্রার অ্যালার্ট বন্ধ।")
+    fun closedOnArrival(name: String, m: Int) = t("$name will be closed when you get there: ~${mins(m)} wait",
+        "$name पहुँचने पर बंद मिलेगा: ~${mins(m)} इंतज़ार", "$name পৌঁছালে বন্ধ পাবেন: ~${mins(m)} অপেক্ষা")
+    fun opensAtTime(time: String) = t("Opens ~$time. Check Phatak Live for a faster way.", "~$time पर खुलेगा। तेज़ रास्ते के लिए Phatak Live देखें।",
+        "~$time-এ খুলবে। দ্রুত পথের জন্য Phatak Live দেখুন।")
+    fun switchTo(name: String, m: Int) = t("Faster now: go via $name, saves ~${mins(m)}", "अब तेज़: $name से जाएँ, ~${mins(m)} बचेंगे",
+        "এখন দ্রুত: $name দিয়ে যান, ~${mins(m)} বাঁচবে")
+    val chTrip = t("Trip status", "यात्रा की स्थिति", "যাত্রার অবস্থা")
+    val chAlert = t("Trip alerts", "यात्रा अलर्ट", "যাত্রার অ্যালার্ট")
+    val allowNotifications = t("Allow notifications to get trip alerts while you drive.",
+        "चलाते समय यात्रा अलर्ट पाने के लिए नोटिफ़िकेशन की अनुमति दें।", "চালানোর সময় যাত্রার অ্যালার্ট পেতে নোটিফিকেশনের অনুমতি দিন।")
+    val mapLiveHint = t("Tap the location button on the map to follow your live position.",
+        "अपनी लाइव पोज़िशन देखने के लिए नक्शे पर लोकेशन बटन दबाएँ।", "আপনার লাইভ অবস্থান দেখতে ম্যাপে লোকেশন বোতাম চাপুন।")
+    val close = t("Close", "बंद करें", "বন্ধ করুন")
 
     // info box
     val infoTitle = t("How gate times work", "फाटक का समय कैसे पता चलता है", "গেটের সময় কীভাবে জানা যায়")

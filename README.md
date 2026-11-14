@@ -64,6 +64,7 @@ closing soon or closed** right now, with a countdown to the next change and the 
 | 🚦 **Nearby** | A hero card with a pulsing state light, a big countdown ("Opens in 4 min") and a closing-window timeline with a *now* marker. Below it, every other gate (OPEN / CLOSING SOON / CLOSED) and the next 3 hours at each nearby station, including trains that pass without stopping. |
 | 🔎 **Find gate** | Any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type, and small spelling mistakes are fine. |
 | 🚆 **Trains** | Live delay, where the train was last seen, next stops with platforms, and "Did you mean…?" when a name is ambiguous. Train numbers work in Hindi or Bengali digits too. |
+| 🧭 **Route** | Pick where you're going (start from your location, a typed place or the gate you're at) and every rail gate, overbridge and underpass on the way is ranked by the whole trip time, including the wait at each gate at the minute you'd reach it. **Navigate** hands over to Google Maps through the best crossing; **Map** shows the route inside the app. Trip alerts keep watching while you drive and say if another way becomes faster. |
 | 🏷️ **Honest times** | Every time is labelled **LIVE** (confirmed by live data) or **TIMETABLE** (not live-confirmed), and gate times are always shown as estimates. |
 
 <img src="docs/readme/themes.webp" alt="Light, dark or auto: the same Nearby screen in the light and dark frosted-glass themes." width="100%">

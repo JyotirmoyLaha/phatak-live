@@ -59,6 +59,8 @@ class GateEngine(private val db: PhatakDb) {
         const val LOOKAHEAD_MIN = 180
         /** a gap shorter than this is not worth opening for: the gate stays down between the two trains */
         private const val MERGE_GAP_SEC = 180
+        /** reaching a gate less than a minute before it goes down counts as finding it closed: never race a gate */
+        const val ARRIVE_MARGIN_SEC = 60
         private const val STATION_LIMIT_KM = 0.6
         private const val MAX_OFF_TRACK_KM = 1.2
         val IST: ZoneId = ZoneId.of("Asia/Kolkata")
@@ -67,6 +69,26 @@ class GateEngine(private val db: PhatakDb) {
             val t = java.time.Instant.ofEpochSecond(epochSec).atZone(IST)
             val h = t.hour % 12
             return "${if (h == 0) 12 else h}:${"%02d".format(java.util.Locale.ROOT, t.minute)} ${if (t.hour < 12) "AM" else "PM"}"
+        }
+
+        /**
+         * What someone reaching the gate at [etaSec] finds. [waitSec] > 0: the gate is down then (or goes down within
+         * [ARRIVE_MARGIN_SEC] of arriving, too close to get through safely) and opens at [opensAt]. [nextClose]: when it
+         * goes down next after that. [trains]: the trains of the closing that holds them up.
+         */
+        data class Arrival(val waitSec: Long, val opensAt: Long?, val nextClose: Long?, val trains: List<GatePass>)
+
+        fun arrival(passes: List<GatePass>, etaSec: Long): Arrival {
+            data class W(val close: Long, var open: Long, val trains: MutableList<GatePass>)
+            val windows = ArrayList<W>()
+            for (p in passes.sortedBy { it.closeEpochSec }) {
+                val last = windows.lastOrNull()
+                if (last != null && p.closeEpochSec <= last.open + MERGE_GAP_SEC) { last.open = maxOf(last.open, p.openEpochSec); last.trains += p }
+                else windows += W(p.closeEpochSec, p.openEpochSec, mutableListOf(p))
+            }
+            val hit = windows.firstOrNull { etaSec >= it.close - ARRIVE_MARGIN_SEC && etaSec < it.open }
+                ?: return Arrival(0, null, windows.firstOrNull { it.close > etaSec }?.close, emptyList())
+            return Arrival(hit.open - etaSec, hit.open, windows.firstOrNull { it.close > hit.open }?.close, hit.trains)
         }
     }
 
