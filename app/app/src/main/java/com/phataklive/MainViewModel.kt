@@ -55,6 +55,8 @@ data class UiState(
     // settings
     val radiusKm: Int = 15,
     val lang: String = "English",
+    /** "auto" | "light" | "dark" (ui.ThemeMode) */
+    val theme: String = "auto",
     // automatic scan
     val stations: List<Station> = emptyList(),
     val gates: List<GateStatus> = emptyList(),
@@ -84,6 +86,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState(
         lang = prefs.getString("lang", defaultLang())!!,
         radiusKm = prefs.getInt("radius", 15),
+        theme = prefs.getString("theme", "auto")!!,
     ))
     val state: StateFlow<UiState> = _state
 
@@ -143,6 +146,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setLang(lang: String) {
         prefs.edit().putString("lang", lang).apply()
         _state.update { it.copy(lang = lang) }
+    }
+
+    fun setTheme(mode: String) {
+        prefs.edit().putString("theme", mode).apply()
+        _state.update { it.copy(theme = mode) }
     }
 
     // ------------------------------------------------------------------ location

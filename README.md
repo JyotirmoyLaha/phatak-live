@@ -132,7 +132,7 @@ in any town in India.
 - **Station boards**: next 3 hours at each nearby station, including trains that pass without stopping.
 - **Three languages**: the whole app switches between **English, हिन्दी and বাংলা** with one tap (EN / हि / বা).
   On first launch it follows your phone's language.
-- **Light and dark theme**; pull down on any tab to refresh; auto-refresh every 3 minutes while open, gate states updated every 20 seconds.
+- **Frosted-glass look, light and dark**: Auto (follows the phone), Light or Dark in Settings, next to language and search radius; pull down on any tab to refresh; auto-refresh every 3 minutes while open, gate states updated every 20 seconds.
 - **In-app updates**: when a new version is released, the app shows what's new and updates itself in one tap.
   It installs over the current version, so there's nothing to uninstall and your settings are kept.
 

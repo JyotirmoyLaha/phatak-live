@@ -120,6 +120,19 @@ class Strings(lang: String) {
     fun accuracy(m: Int) = if (m <= 100) t("accurate to $m m", "$m मीटर तक सटीक", "$m মিটার পর্যন্ত নির্ভুল")
         else t("approximate location", "अनुमानित लोकेशन", "আনুমানিক লোকেশন")
 
+    // settings panel
+    val settings = t("Settings", "सेटिंग्स", "সেটিংস")
+    val theme = t("Theme", "थीम", "থিম")
+    val themeAuto = t("Auto", "ऑटो", "অটো")
+    val themeLight = t("Light", "लाइट", "লাইট")
+    val themeDark = t("Dark", "डार्क", "ডার্ক")
+    val themeHint = t("Auto follows your phone's light or dark setting.", "ऑटो आपके फ़ोन की लाइट या डार्क सेटिंग के हिसाब से चलता है।",
+        "অটো আপনার ফোনের লাইট বা ডার্ক সেটিং মেনে চলে।")
+    val radius = t("Search radius", "खोज का दायरा", "খোঁজার পরিধি")
+    val radiusHint = t("How far around you to look for rail gates and stations.", "आपके आसपास कितनी दूरी तक रेल फाटक और स्टेशन खोजें।",
+        "আপনার চারপাশে কত দূর পর্যন্ত রেল গেট আর স্টেশন খুঁজবে।")
+    val done = t("Done", "ठीक है", "ঠিক আছে")
+
     // info box
     val infoTitle = t("How gate times work", "फाटक का समय कैसे पता चलता है", "গেটের সময় কীভাবে জানা যায়")
     val info1 = t("A gate closes when the station master sends the train towards it, usually as the train leaves the station before the gate: about 4 to 15 minutes before it arrives. It opens about 3 minutes after the whole train has passed, if no other train is coming.",

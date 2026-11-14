@@ -78,7 +78,26 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.rounded.BrightnessAuto
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.ModalBottomSheet
+import com.phataklive.BuildConfig
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -148,12 +167,16 @@ fun MainScreen(
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { BottomBar(tab, t) { tab = it } },
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
-            Header(s, t, onRefresh = vm::refresh, onRadius = vm::setRadius, onLang = vm::setLang)
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    // everything under the bottom bar is the blur source: lists scroll behind the frosted bar
+    val haze = remember { HazeState() }
+    // glass panels are not Surfaces, so text colour comes from here (otherwise it would default to black)
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().hazeSource(haze)) {
+        AmbientBackground()
+        Column(Modifier.fillMaxSize()) {
+            Header(s, t, onRefresh = vm::refresh, onSettings = { showSettings = true })
             AnimatedContent(targetState = tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) }, label = "tab") { which ->
                 // pull down to refresh: search tabs repeat their last search, otherwise the nearby scan runs again
                 val repeatGate = which == 1 && s.gateQuery.isNotBlank()
@@ -182,8 +205,19 @@ fun MainScreen(
                 }
             }
         }
+        }
+        BottomBar(tab, t, haze, Modifier.align(Alignment.BottomCenter)) { tab = it }
     }
+    }
+    if (showSettings) SettingsSheet(s, t, vm) { showSettings = false }
     AppUpdate(t)
+}
+
+/** List padding that keeps the last card clear of the floating bottom bar. */
+@Composable
+private fun listPadding(): PaddingValues {
+    val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    return PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 100.dp + nav)
 }
 
 /** Offers a newer release from GitHub (checked once per launch in MainActivity). */
@@ -206,15 +240,38 @@ private fun AppUpdate(t: Strings) {
     )
 }
 
+/**
+ * Floating frosted-glass tab bar: the list scrolls behind it and shows through blurred, with a fine grain
+ * (Android 12+; on Android 10-11 the glass is a dense tint instead).
+ */
 @Composable
-private fun BottomBar(tab: Int, t: Strings, onTab: (Int) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-        val items = listOf(Triple(t.tabNearby, Icons.Rounded.Traffic, 0), Triple(t.tabSearch, Icons.Rounded.Search, 1),
-            Triple(t.tabTrains, Icons.Rounded.DirectionsRailway, 2))
+private fun BottomBar(tab: Int, t: Strings, haze: HazeState, modifier: Modifier, onTab: (Int) -> Unit) {
+    val c = Phatak.c
+    val shape = RoundedCornerShape(26.dp)
+    val items = listOf(Triple(t.tabNearby, Icons.Rounded.Traffic, 0), Triple(t.tabSearch, Icons.Rounded.Search, 1),
+        Triple(t.tabTrains, Icons.Rounded.DirectionsRailway, 2))
+    Row(
+        modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().height(66.dp)
+            .clip(shape)
+            .hazeEffect(haze, HazeStyle(backgroundColor = c.bgBase, tint = HazeTint(c.chrome), blurRadius = 26.dp,
+                noiseFactor = 0.10f, fallbackTint = HazeTint(c.chromeFallback)))
+            .border(1.dp, glassEdge(), shape)
+            .selectableGroup()
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         items.forEach { (label, icon, i) ->
-            NavigationBarItem(selected = tab == i, onClick = { onTab(i) }, icon = { Icon(icon, null) },
-                label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                colors = NavigationBarItemDefaults.colors(indicatorColor = Phatak.c.amber.copy(alpha = 0.28f)))
+            val sel = tab == i
+            val fg = when { !sel -> c.muted; c.dark -> c.amber; else -> MaterialTheme.colorScheme.onSurface }
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(20.dp))
+                    .background(if (sel) c.amber.copy(alpha = if (c.dark) 0.14f else 0.32f) else Color.Transparent)
+                    .selectable(selected = sel, role = Role.Tab, onClick = { onTab(i) }),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(icon, null, tint = fg, modifier = Modifier.size(22.dp))
+                Text(label, style = MaterialTheme.typography.labelSmall, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -317,13 +374,18 @@ private fun BarrierIllustration(modifier: Modifier) {
 // ===================================================================================== header
 
 @Composable
-private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onRadius: (Int) -> Unit, onLang: (String) -> Unit) {
+private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onSettings: () -> Unit) {
     val c = Phatak.c
+    val shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp))
+            .clip(shape)
             .background(Brush.verticalGradient(listOf(c.headerTop, c.headerBottom)))
-            .statusBarsPadding().padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 16.dp),
+            // a warm lamp glow at the right, the same amber as the signal
+            .background(Brush.radialGradient(listOf(c.amber.copy(alpha = 0.16f), Color.Transparent),
+                center = Offset(Float.POSITIVE_INFINITY, 0f), radius = 700f))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.14f))), shape)
+            .statusBarsPadding().padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.ic_logo), contentDescription = null, modifier = Modifier.size(34.dp))
@@ -333,14 +395,14 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onRadius: (Int
             Spacer(Modifier.width(8.dp))
             if (s.lastRefreshSec != null && !s.loading) LivePulse(c.open)
             Spacer(Modifier.weight(1f))
-            LangSwitch(s.lang, onLang)
+            IconButton(onClick = onSettings) { Icon(Icons.Rounded.Tune, t.settings, tint = c.onHeader) }
             val spin = rememberInfiniteTransition(label = "spin").animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "r")
             IconButton(onClick = onRefresh, enabled = !s.loading) {
                 Icon(Icons.Rounded.Refresh, "Refresh", tint = c.onHeader, modifier = if (s.loading) Modifier.rotate(spin.value) else Modifier)
             }
         }
         Row(
-            Modifier.padding(top = 6.dp, end = 8.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.10f))
+            Modifier.padding(top = 8.dp, end = 10.dp).headerGlass()
                 .padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -355,27 +417,79 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onRadius: (Int
                 modifier = Modifier.weight(1f, fill = false))
             s.accuracyM?.let { Text("  · ${t.accuracy(it.toInt())}", color = c.onHeaderMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
         }
-        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf(10, 15, 20).forEach { km ->
-                val sel = s.radiusKm == km
-                Text("$km km", color = if (sel) Color(0xFF1A1300) else c.onHeader, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(50))
-                        .background(if (sel) c.amber else Color.White.copy(alpha = 0.10f))
-                        .clickable { onRadius(km) }.padding(horizontal = 14.dp, vertical = 6.dp))
-            }
-            Spacer(Modifier.weight(1f))
-            s.lastRefreshSec?.let {
-                Text("${t.updated} ${GateEngine.fmt(it)}", color = c.onHeaderMuted, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(end = 8.dp))
+        Text(
+            listOfNotNull("${s.radiusKm} km", s.lastRefreshSec?.let { "${t.updated} ${GateEngine.fmt(it)}" }).joinToString("  ·  "),
+            color = c.onHeaderMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+        )
+    }
+}
+
+/** Language, theme and search radius, out of the header: a bottom sheet opened from the header's settings button. */
+@Composable
+private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onClose: () -> Unit) {
+    val c = Phatak.c
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).navigationBarsPadding()) {
+            Text(t.settings, style = MaterialTheme.typography.headlineSmall)
+            SettingTitle(t.language, null)
+            Segmented(listOf(Triple("English", "English", null), Triple("Hindi", "हिन्दी", null), Triple("Bengali", "বাংলা", null)),
+                s.lang, vm::setLang)
+            SettingTitle(t.theme, t.themeHint)
+            Segmented(listOf(Triple(ThemeMode.AUTO, t.themeAuto, Icons.Rounded.BrightnessAuto),
+                Triple(ThemeMode.LIGHT, t.themeLight, Icons.Rounded.LightMode), Triple(ThemeMode.DARK, t.themeDark, Icons.Rounded.DarkMode)),
+                s.theme, vm::setTheme)
+            SettingTitle(t.radius, t.radiusHint)
+            Segmented(listOf(10, 15, 20).map { Triple("$it", "$it km", null) }, "${s.radiusKm}") { vm.setRadius(it.toInt()) }
+            Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Phatak Live ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.weight(1f))
+                Button(onClick = onClose, shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300))) { Text(t.done) }
             }
         }
     }
 }
 
 @Composable
+private fun SettingTitle(title: String, hint: String?) {
+    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 22.dp))
+    hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Phatak.c.muted, modifier = Modifier.padding(top = 2.dp)) }
+    Spacer(Modifier.height(10.dp))
+}
+
+/** One choice out of a few, as a glass track with the chosen option lit in signal amber. */
+@Composable
+private fun Segmented(options: List<Triple<String, String, ImageVector?>>, selected: String, onSelect: (String) -> Unit) {
+    val c = Phatak.c
+    Row(
+        Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp), strong = true).padding(4.dp).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        options.forEach { (value, label, icon) ->
+            val sel = value == selected
+            val fg = if (sel) Color(0xFF1A1300) else MaterialTheme.colorScheme.onSurface
+            Row(
+                Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(if (sel) c.amber else Color.Transparent)
+                    .selectable(selected = sel, role = Role.RadioButton, onClick = { onSelect(value) })
+                    .padding(vertical = 11.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+            ) {
+                icon?.let { Icon(it, null, tint = fg, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)) }
+                Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Frosted pill on the navy header: a little white haze with a fine light edge. */
+private fun Modifier.headerGlass(): Modifier {
+    val pill = RoundedCornerShape(50)
+    return clip(pill).background(Color.White.copy(alpha = 0.11f)).border(1.dp, Color.White.copy(alpha = 0.14f), pill)
+}
+
+@Composable
 private fun LangSwitch(lang: String, onLang: (String) -> Unit) {
     val c = Phatak.c
-    Row(Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.10f)).padding(3.dp)) {
+    Row(Modifier.headerGlass().padding(3.dp)) {
         listOf("English" to "EN", "Hindi" to "हि", "Bengali" to "বা").forEach { (l, label) ->
             val sel = lang == l
             Text(label, color = if (sel) Color(0xFF1A1300) else c.onHeader, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center,
@@ -402,7 +516,7 @@ private fun nowSec(): Long {
 @Composable
 private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocation: () -> Unit, onOpenLocationSettings: () -> Unit) {
     val now = nowSec()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (s.access != LocationAccess.GRANTED) item {
             Banner(Icons.Rounded.LocationOff, t.deniedTitle, t.deniedBody, t.allowLocation, onRequestLocation)
         }
@@ -427,7 +541,7 @@ private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocati
 private fun Banner(icon: ImageVector, title: String?, body: String, action: String?, onAction: (() -> Unit)?) {
     val c = Phatak.c
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.soonBg).padding(14.dp),
+        Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp), tint = c.soon).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = c.soon)
@@ -445,8 +559,7 @@ private fun Banner(icon: ImageVector, title: String?, body: String, action: Stri
 private fun InfoBox(t: Strings) {
     val c = Phatak.c
     Column(
-        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp).clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp),
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp).glass(RoundedCornerShape(22.dp)).padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Info, null, tint = c.amber, modifier = Modifier.size(20.dp))
@@ -478,13 +591,13 @@ private fun SectionTitle(title: String, sub: String) {
 @Composable
 private fun EmptyNote(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp))
+        modifier = Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp)).padding(16.dp))
 }
 
 @Composable
 private fun Skeleton(height: androidx.compose.ui.unit.Dp) {
     val a by rememberInfiniteTransition(label = "sk").animateFloat(0.45f, 0.9f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "a")
-    Box(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = a)))
+    Box(Modifier.fillMaxWidth().height(height).graphicsLayer { alpha = a }.glass(RoundedCornerShape(22.dp)))
 }
 
 private fun problemText(p: Problem, t: Strings): String = when (p) {
@@ -530,7 +643,7 @@ private fun GateHero(g: GateStatus, t: Strings, now: Long) {
     val l = look(g.state, t)
     val c = Phatak.c
     val (label, value) = countdown(g, t, now)
-    Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = l.bg), modifier = Modifier.fillMaxWidth()) {
+    GlassCard(Modifier.fillMaxWidth(), radius = 26.dp, tint = l.fg) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StateLight(l.fg, pulsing = g.state != GateState.OPEN, size = 14.dp)
@@ -639,12 +752,12 @@ private fun GateCard(g: GateStatus, t: Strings, now: Long) {
     val c = Phatak.c
     val (label, value) = countdown(g, t, now)
     var expanded by remember { mutableStateOf(false) }
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = c.card),
-        border = BorderStroke(1.dp, c.cardBorder), modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(6.dp).fillMaxHeight().background(l.fg))
+    GlassCard(Modifier.fillMaxWidth(), radius = 22.dp, onClick = { expanded = !expanded }) {
+        Row {
             Column(Modifier.padding(14.dp).weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(l.fg))
+                    Spacer(Modifier.width(8.dp))
                     Text(l.label, color = l.fg, style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(l.bg).padding(horizontal = 9.dp, vertical = 3.dp))
                     Spacer(Modifier.width(8.dp))
@@ -673,11 +786,10 @@ private fun GateCard(g: GateStatus, t: Strings, now: Long) {
 private fun BoardCard(b: StationBoard, t: Strings) {
     val c = Phatak.c
     var expanded by remember { mutableStateOf(false) }
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = c.card), border = BorderStroke(1.dp, c.cardBorder),
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
+    GlassCard(Modifier.fillMaxWidth(), radius = 22.dp, onClick = { expanded = !expanded }) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.DirectionsRailway, null, tint = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.width(12.dp))
@@ -720,7 +832,7 @@ private fun SearchField(
     OutlinedTextField(
         value = q, modifier = Modifier.fillMaxWidth(), singleLine = true,
         onValueChange = { q = it; onType(it); if (it.isBlank()) onClear() },   // emptied by hand: results go too
-        placeholder = { Text(hint) }, shape = RoundedCornerShape(16.dp),
+        placeholder = { Text(hint) }, shape = RoundedCornerShape(18.dp),
         leadingIcon = { Icon(Icons.Rounded.Search, null) },
         trailingIcon = {
             if (q.isNotEmpty()) IconButton(onClick = { q = ""; onClear() }) { Icon(Icons.Rounded.Close, null) }
@@ -728,15 +840,17 @@ private fun SearchField(
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { if (q.isNotBlank()) onSearch(q) }),
-        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Phatak.c.card, unfocusedContainerColor = Phatak.c.card),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Phatak.c.glassStrong, unfocusedContainerColor = Phatak.c.glassStrong,
+            unfocusedBorderColor = Phatak.c.cardBorder, focusedBorderColor = MaterialTheme.colorScheme.primary,
+        ),
     )
 }
 
 @Composable
 private fun Suggestions(list: List<LiveSearch.Suggestion>, t: Strings, onPick: (LiveSearch.Suggestion) -> Unit) {
     val c = Phatak.c
-    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = c.card),
-        border = BorderStroke(1.dp, c.cardBorder), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp).glass(RoundedCornerShape(18.dp), strong = true)) {
         list.forEachIndexed { i, sug ->
             if (i > 0) HorizontalDivider(color = c.cardBorder)
             val (icon, title, sub, km) = when (sug) {
@@ -762,7 +876,7 @@ private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
     val now = nowSec()
     val focus = LocalFocusManager.current
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(t.searchGateTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.searchGateSub, style = MaterialTheme.typography.bodyMedium, color = Phatak.c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
@@ -783,7 +897,7 @@ private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
 @Composable
 private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
     val c = Phatak.c
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(t.trainTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.trainSub, style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
@@ -805,12 +919,11 @@ private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
                 }
             }
             item {
-                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = c.card),
-                    border = BorderStroke(1.dp, c.cardBorder), modifier = Modifier.fillMaxWidth()) {
+                GlassCard(Modifier.fillMaxWidth(), radius = 26.dp) {
                     Column(Modifier.padding(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(tr.no, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                                     .padding(horizontal = 8.dp, vertical = 3.dp))
                             Spacer(Modifier.weight(1f))
                             SourceChip(tr.live, t)

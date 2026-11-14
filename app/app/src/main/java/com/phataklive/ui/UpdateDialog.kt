@@ -1,6 +1,7 @@
 package com.phataklive.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,7 +60,8 @@ fun UpdateDialog(
     Dialog(onDismissRequest = { if (!busy) onLater() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.padding(horizontal = 28.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                .background(Brush.verticalGradient(listOf(c.headerBottom, c.headerTop))),
+                .background(Brush.verticalGradient(listOf(c.headerBottom, c.headerTop)))
+                .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.04f))), RoundedCornerShape(28.dp)),
         ) {
             Column(Modifier.fillMaxWidth().padding(top = 24.dp, start = 22.dp, end = 22.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {

@@ -17,6 +17,12 @@ import com.phataklive.update.UpdateChecker
 import kotlinx.coroutines.launch
 import com.phataklive.ui.MainScreen
 import com.phataklive.ui.PhatakTheme
+import com.phataklive.ui.isDark
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 /**
  * Permission flow: the app explains why it needs location (onboarding screen) before the system dialog,
@@ -48,7 +54,18 @@ class MainActivity : ComponentActivity() {
             UpdateChecker.check()
         }
         setContent {
-            PhatakTheme {
+            val theme by vm.state.collectAsState()
+            val dark = isDark(theme.theme)
+            // the header is navy in both themes, so status-bar icons stay light; the nav bar follows the theme
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
+                    else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+                )
+                onDispose { }
+            }
+            PhatakTheme(theme.theme) {
                 MainScreen(
                     vm,
                     onRequestLocation = ::requestLocation,

@@ -20,8 +20,8 @@ android {
         applicationId = "com.phataklive"
         minSdk = 29
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.2.3"
+        versionCode = 9
+        versionName = "1.2.5"
 
     }
 
@@ -74,6 +74,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // frosted-glass blur behind the bottom bar (Android 12+; a tint on Android 10-11)
+    implementation("dev.chrisbanes.haze:haze:1.3.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
