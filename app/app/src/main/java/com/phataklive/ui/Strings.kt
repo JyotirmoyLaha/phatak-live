@@ -168,7 +168,7 @@ class Strings(lang: String) {
     val modeBike = t("Two-wheeler", "दोपहिया", "টু-হুইলার")
     val modeCar = t("Car", "कार", "গাড়ি")
     val modeWalk = t("Walk", "पैदल", "হেঁটে")
-    val findBest = t("Find best crossing", "सबसे अच्छा रास्ता खोजें", "সেরা পথ খুঁজুন")
+    val findBest = t("Find best way", "सबसे अच्छा रास्ता खोजें", "সেরা পথ খুঁজুন")
     val stepCrossings = t("Finding gates and bridges on the way…", "रास्ते के फाटक और पुल खोज रहे हैं…", "পথের গেট আর ব্রিজ খোঁজা হচ্ছে…")
     val stepRoutes = t("Checking each road on Google Maps…", "Google Maps पर हर रास्ता जाँच रहे हैं…", "Google Maps-এ প্রতিটি পথ দেখা হচ্ছে…")
     val stepTrains = t("Checking live trains at each gate…", "हर फाटक की लाइव ट्रेनें जाँच रहे हैं…", "প্রতিটি গেটের লাইভ ট্রেন দেখা হচ্ছে…")
@@ -195,6 +195,16 @@ class Strings(lang: String) {
     fun crossingNear(st: String) = t("Rail crossing near $st", "$st के पास रेल क्रॉसिंग", "$st-এর কাছে রেল ক্রসিং")
     fun via(road: String) = t("via $road", "$road से", "$road দিয়ে")
     val railCrossing = t("Rail crossing", "रेल क्रॉसिंग", "রেল ক্রসিং")
+    val navStopNoteRoad = t("Google Maps will show a stop on this road to keep you on it. Don't stop there, just keep going.",
+        "Google Maps आपको इसी रास्ते पर रखने के लिए एक स्टॉप दिखाएगा। वहाँ रुकना नहीं है, बस चलते रहें।",
+        "Google Maps আপনাকে এই পথে রাখতে একটা স্টপ দেখাবে। সেখানে থামতে হবে না, শুধু চলতে থাকুন।")
+    // simple card lines
+    val likelyOpen = t("likely open", "संभवतः खुला", "সম্ভবত খোলা")
+    fun likelyClosedWait(m: Int) = t("likely closed, wait ~${mins(m)}", "संभवतः बंद, ~${mins(m)} इंतज़ार", "সম্ভবত বন্ধ, ~${mins(m)} অপেক্ষা")
+    val noGate = t("bridge or underpass, no gate", "पुल या अंडरपास, फाटक नहीं", "ব্রিজ বা আন্ডারপাস, গেট নেই")
+    fun manyCrossings(n: Int, label: String) = t("$n × $label", "$n × $label", "$n × $label")
+    val navStopShort = t("Google Maps will show a stop on the way. Just keep going.", "Google Maps रास्ते में एक स्टॉप दिखाएगा। बस चलते रहें।",
+        "Google Maps পথে একটা স্টপ দেখাবে। শুধু চলতে থাকুন।")
     val navStopNote = t("Google Maps will show a stop just after this crossing. Don't stop there, just keep going.",
         "Google Maps इस क्रॉसिंग के ठीक बाद एक स्टॉप दिखाएगा। वहाँ रुकना नहीं है, बस चलते रहें।",
         "Google Maps এই ক্রসিংয়ের ঠিক পরে একটা স্টপ দেখাবে। সেখানে থামতে হবে না, শুধু চলতে থাকুন।")

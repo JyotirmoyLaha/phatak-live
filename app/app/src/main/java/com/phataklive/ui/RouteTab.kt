@@ -92,6 +92,7 @@ import com.phataklive.data.Geo
 import com.phataklive.gate.GateEngine
 import com.phataklive.net.GoogleDirections
 import com.phataklive.route.AtArrival
+import com.phataklive.route.AtCrossing
 import com.phataklive.route.Crossing
 import com.phataklive.route.Leg
 import com.phataklive.route.CrossingKind
@@ -459,63 +460,82 @@ private fun StatusLine(o: Option, t: Strings) {
     }
 }
 
+/** One line of a card: a crossing (or several in a row with the same name) and what you're likely to find. */
+private data class CrossingLine(val label: String, val count: Int, val etaSec: Long, val at: AtArrival, val waitSec: Int)
+
+/**
+ * The crossings of a way as simple lines, in order. Crossings in a row with the same name ("near Bandel Junction"
+ * twice) become one line, "2 rail crossings near …", showing the worst of them: a layman reads one line, not two.
+ */
+private fun crossingLines(o: Option, t: Strings): List<CrossingLine> {
+    val all = listOf(AtCrossing(o.leg.crossing, o.etaSec, o.waitSec, o.at, o.opensAt)) + o.later
+    val out = ArrayList<CrossingLine>()
+    for (a in all) {
+        val label = a.crossing.label(t)
+        val last = out.lastOrNull()
+        if (last != null && last.label == label) {
+            val worse = if (a.waitSec > last.waitSec) a.at else last.at
+            out[out.lastIndex] = last.copy(count = last.count + 1, at = worse, waitSec = maxOf(last.waitSec, a.waitSec))
+        } else out += CrossingLine(label, 1, a.etaSec, a.at, a.waitSec)
+    }
+    return out
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, onNavigate: () -> Unit, onMap: () -> Unit) {
     val c = Phatak.c
     val col = stateColor(o)
-    val cr = o.leg.crossing
     GlassCard(Modifier.fillMaxWidth(), radius = if (best) 26.dp else 22.dp, tint = if (best) col else null) {
         Column(Modifier.padding(16.dp)) {
-            // the way first ("via SH 14"), then the railway crossings on it
+            // the way: "via SH 14 · 16.6 km", BEST, and the whole trip time
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.AltRoute, null, tint = MaterialTheme.colorScheme.primary)
-                }
-                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(o.leg.road?.let { t.via(it) } ?: cr.label(t), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(o.leg.road?.let { t.via(it) } ?: o.leg.crossing.label(t), style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("%.1f km".format(o.leg.viaM / 1000.0), style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
                 if (best) Text(t.best, color = Color(0xFF1A1300), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black,
                     modifier = Modifier.clip(RoundedCornerShape(50)).background(c.amber).padding(horizontal = 10.dp, vertical = 4.dp))
             }
             Text(t.total(roundMin(o.totalSec)), style = if (best) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-            Text(t.crossingsOnWay, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
-            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
-                Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(col.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                    Icon(kindIcon(cr.kind), null, tint = col, modifier = Modifier.size(20.dp))
+                fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+            // one simple line per crossing: dot, name, time you reach it, likely open / closed
+            crossingLines(o, t).forEach { line ->
+                val lc = if (line.at == AtArrival.CLOSED) c.closed else c.open
+                val state = when (line.at) {
+                    AtArrival.CLOSED -> t.likelyClosedWait(waitMin(line.waitSec))
+                    AtArrival.OPEN -> t.likelyOpen
+                    AtArrival.NO_GATE -> t.noGate
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(cr.label(t), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(kindLabel(cr.kind, t), style = MaterialTheme.typography.bodySmall, color = c.muted)
-                    Spacer(Modifier.height(2.dp))
-                    StatusLine(o, t)
-                    Text(t.reachIn(roundMin(o.toCrossingSec), GateEngine.fmt(o.etaSec)), style = MaterialTheme.typography.bodySmall, color = c.muted,
-                        modifier = Modifier.padding(top = 2.dp))
+                Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+                    Box(Modifier.padding(top = 5.dp).size(12.dp).clip(CircleShape).background(lc))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (line.count > 1) t.manyCrossings(line.count, line.label) else line.label,
+                            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("~${GateEngine.fmt(line.etaSec)} · $state", style = MaterialTheme.typography.bodyMedium, color = lc, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
-            if (o.googleWay || (cr.kind == CrossingKind.GATE && o.trains.isNotEmpty()) || tripOn) {
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // the train that keeps the first gate down, if it is likely closed
+            if (o.at == AtArrival.CLOSED) o.trains.take(1).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
+            if (o.googleWay || o.live || tripOn) {
+                FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (tripOn) Pill(t.tripAlertsOn, c.amber, Icons.Rounded.NotificationsActive)
                     if (o.googleWay) Pill(t.googleWay, MaterialTheme.colorScheme.primary, null)
-                    if (cr.kind == CrossingKind.GATE && o.trains.isNotEmpty()) SourceChip(o.live, t)
+                    if (o.live) SourceChip(true, t)
                 }
             }
-            if (o.at == AtArrival.CLOSED) o.trains.take(2).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
-            LaterLines(o, t, header = false)
-            // Google Maps shows our stop just past the crossing as a stop: say so, so nobody pulls over there
-            if (o.leg.navStop != null) Text(t.navStopNote, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 8.dp))
+            // Google Maps shows the stop that keeps it on this way: one short line, so nobody pulls over there
+            if (o.leg.navStop != null) Text(t.navStopShort, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onNavigate, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f),
+                Button(onClick = onNavigate, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f).height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300))) {
                     Icon(Icons.Rounded.Navigation, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                    Text(t.navigateBtn, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(t.navigateBtn, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
                 }
-                FilledTonalButton(onClick = onMap, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = onMap, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f).height(50.dp)) {
                     Icon(Icons.Rounded.Map, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text(t.mapBtn, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

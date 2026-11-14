@@ -138,7 +138,18 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         /** a start closer than this to a railway line is on it (a gate, a station): which side is unknown */
         private const val ON_RAILWAY_KM = 0.06
         /** a route that gets this far from another somewhere is on another road */
-        private const val OTHER_ROAD_KM = 0.3
+        private const val OTHER_ROAD_KM = 1.0
+
+        /**
+         * Two routes are the same way when they cross the railway at the same places and Google names the same road for
+         * both, or they never get more than [OTHER_ROAD_KM] apart: a small detour is not another way.
+         */
+        internal fun sameWay(aCross: List<LatLng>, aLine: List<LatLng>, aRoad: String?,
+                             bCross: List<LatLng>, bLine: List<LatLng>, bRoad: String?): Boolean {
+            if (aCross.size != bCross.size || aCross.zip(bCross).any { (x, y) -> Geo.km(x, y) >= 0.08 }) return false
+            if (!aRoad.isNullOrBlank() && aRoad == bRoad) return true
+            return Lines.deviationKm(aLine, bLine) < OTHER_ROAD_KM && Lines.deviationKm(bLine, aLine) < OTHER_ROAD_KM
+        }
         /** crossings this close are one crossing area: only one way through it is shown */
         private const val SAME_AREA_KM = 0.5
         /** crossings with the same name closer than this: only the faster way is shown */
@@ -332,18 +343,18 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         val first = ownHits.first().pos
         val probes = probePoints(rails) { Geo.km(it, first) <= PROBE_NEAR_KM && Geo.km(it, first) > 0.1 && detour(it) <= maxDetour }
         val candidates = ArrayList<Way>()
-        // a way is another way if it crosses somewhere else, or crosses at the same place on a different road
-        fun sameWay(a: Way, hits: List<Lines.Hit>, line: List<LatLng>) =
-            Geo.km(a.hits[0].pos, hits[0].pos) < 0.08 && Lines.deviationKm(line, a.route.line) < OTHER_ROAD_KM
+        // a way is another way if it crosses somewhere else, or crosses at the same places on a really different road
+        fun same(a: GoogleDirections.Route, aHits: List<Lines.Hit>, b: GoogleDirections.Route, bHits: List<Lines.Hit>) =
+            sameWay(aHits.map { it.pos }, a.line, a.summary, bHits.map { it.pos }, b.line, b.summary)
         fun consider(r: GoogleDirections.Route) {
             val hits = Lines.crossings(r.line, rails)
             // same number of crossings as Google's own road (no detour across and back)
             if (hits.size != ownHits.size) return
             // Google's own way again
-            if (Geo.km(hits[0].pos, first) < 0.08 && Lines.deviationKm(r.line, ownRoute.line) < OTHER_ROAD_KM) return
-            val same = candidates.indexOfFirst { sameWay(it, hits, r.line) }
-            if (same < 0) candidates += Way(r, hits, null)
-            else if (r.durationSec < candidates[same].route.durationSec) candidates[same] = Way(r, hits, null)
+            if (same(r, hits, ownRoute, ownHits)) return
+            val dup = candidates.indexOfFirst { same(it.route, it.hits, r, hits) }
+            if (dup < 0) candidates += Way(r, hits, null)
+            else if (r.durationSec < candidates[dup].route.durationSec) candidates[dup] = Way(r, hits, null)
         }
         own.drop(1).forEach { consider(it) }   // Google's other roads: they need a stop too, Navigate takes the first route
         probes.map { p -> async(Dispatchers.IO) { google { GoogleDirections.routes(listOf(o, p, d), mode).firstOrNull() } } }
@@ -363,8 +374,7 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
                     val hits = Lines.crossings(r.line, rails)
                     // Google Maps must cross first exactly here, as many times as Google's own road, and (same crossing)
                     // still on the other road
-                    val ok = hits.size == ownHits.size && Geo.km(hits[0].pos, w.hits[0].pos) < 0.08 &&
-                        (!sameCrossing || Lines.deviationKm(r.line, ownRoute.line) >= OTHER_ROAD_KM)
+                    val ok = hits.size == ownHits.size && Geo.km(hits[0].pos, w.hits[0].pos) < 0.08 && !same(r, hits, ownRoute, ownHits)
                     if (ok) Way(r, hits, stop) else null
                 }
             }.awaitAll().filterNotNull()
@@ -404,7 +414,7 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
                         val d = Geo.km(k.crossing.pos, l.crossing.pos)
                         when {
                             // the same crossing: a duplicate unless it is really another road
-                            d < 0.08 -> Lines.deviationKm(l.line, k.line) < OTHER_ROAD_KM
+                            d < 0.08 -> sameWay(l.crossings.map { it.pos }, l.line, l.road, k.crossings.map { it.pos }, k.line, k.road)
                             // two crossings in one area, or two under the same name nearby ("near X" twice), confuse
                             d < SAME_AREA_KM -> true
                             else -> k.crossing.name == l.crossing.name && k.crossing.named == l.crossing.named && d < SAME_NAME_KM

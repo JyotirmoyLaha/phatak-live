@@ -186,6 +186,21 @@ class RouteLogicTest {
         assertEquals(CrossingKind.GATE, c.kind); assertEquals("GT Rd", c.road); assertEquals(false, c.named)
     }
 
+    @Test fun aSmallDetourIsNotAnotherWay() {
+        val gate = listOf(LatLng(23.4937, 87.7330))
+        val own = listOf(LatLng(23.49, 87.80), LatLng(23.4937, 87.7330), LatLng(23.46, 87.69))
+        val bend = listOf(LatLng(23.49, 87.80), LatLng(23.4990, 87.7700), LatLng(23.4937, 87.7330), LatLng(23.46, 87.69))   // ~700 m off
+        val far = listOf(LatLng(23.49, 87.80), LatLng(23.5200, 87.7700), LatLng(23.4937, 87.7330), LatLng(23.46, 87.69))    // ~3 km off
+        // the screenshot: both "via SH 14" through the same gate -> one way
+        assertEquals(true, CrossingPlanner.sameWay(gate, own, "SH 14", gate, far, "SH 14"))
+        // different road names but less than 1 km apart -> still one way
+        assertEquals(true, CrossingPlanner.sameWay(gate, own, "SH 14", gate, bend, "Station Rd"))
+        // a really different road through the same gate -> another way
+        assertEquals(false, CrossingPlanner.sameWay(gate, own, "SH 14", gate, far, "Batagram Rd"))
+        // another crossing -> another way
+        assertEquals(false, CrossingPlanner.sameWay(gate, own, "SH 14", listOf(LatLng(23.4574, 87.7408)), far, "SH 14"))
+    }
+
     @Test fun otherRoadIsMeasuredByHowFarItGoes() {
         val a = listOf(LatLng(23.0, 87.0), LatLng(23.0, 87.02))
         val b = listOf(LatLng(23.0, 87.0), LatLng(23.006, 87.01), LatLng(23.0, 87.02))   // bows ~660 m away
