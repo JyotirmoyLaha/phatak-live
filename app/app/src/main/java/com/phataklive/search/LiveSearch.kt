@@ -129,10 +129,7 @@ class LiveSearch(private val db: PhatakDb) {
         for ((c, r) in jobs.awaitAll()) {
             val v = r.getOrNull()
             when {
-                r.isFailure && c is Call.StationLive -> {
-                    errors[c.code] = r.exceptionOrNull()?.message ?: "network error"
-                    android.util.Log.w("PhatakLive", "live ${c.code} failed", r.exceptionOrNull())
-                }
+                r.isFailure && c is Call.StationLive -> errors[c.code] = r.exceptionOrNull()?.message ?: "network error"
                 v is List<*> -> v.filterIsInstance<Gate>().forEach { g ->
                     if (gates.none { Geo.km(it.pos, g.pos) < 0.08 || (it.name.equals(g.name, true) && Geo.km(it.pos, g.pos) < 0.3) }) gates += g
                 }

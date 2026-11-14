@@ -64,7 +64,6 @@ closing soon or closed** right now, with a countdown to the next change and the 
 | 🚦 **Nearby** | A hero card with a pulsing state light, a big countdown ("Opens in 4 min") and a closing-window timeline with a *now* marker. Below it, every other gate (OPEN / CLOSING SOON / CLOSED) and the next 3 hours at each nearby station, including trains that pass without stopping. |
 | 🔎 **Find gate** | Any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type, and small spelling mistakes are fine. |
 | 🚆 **Trains** | Live delay, where the train was last seen, next stops with platforms, and "Did you mean…?" when a name is ambiguous. Train numbers work in Hindi or Bengali digits too. |
-| 🧭 **Route** | Choose where you're going and the app compares the roads Google Maps drives there, ranked by the whole trip time including the likely wait at every rail gate on each road at the minute you'd reach it. Crossings are found where the road meets the railway, named on the map or not; flyovers and underpasses never close. **Navigate** opens Google Maps on exactly that road; **Map** shows it on the real map with your live position. Trip alerts warn once if a gate ahead is likely to be closed. A one-time safety notice must be accepted first. |
 | 🏷️ **Honest times** | Every time is labelled **LIVE** (confirmed by live data) or **TIMETABLE** (not live-confirmed), and gate times are always shown as estimates. |
 
 <img src="docs/readme/themes.webp" alt="Light, dark or auto: the same Nearby screen in the light and dark frosted-glass themes." width="100%">
@@ -272,13 +271,6 @@ Release builds read signing details from `app/keystore.properties` (not in the r
 
 Phatak Live is an **independent project**. It is not affiliated with or endorsed by Indian Railways, CRIS, IRCTC or
 Google. Live data comes from public web endpoints that may change without notice.
-
-**Route and trip alerts.** Routes and roads come from Google Maps; the app only compares the ways across the railway
-that Google Maps itself drives. Gate states on a route are labelled *likely* because a gate can close at any time,
-also for goods trains and specials that no timetable shows. Where the app can't tell whether a crossing is a gate or a
-bridge, it treats it as a gate. The Route tab can't be used until its safety notice has been accepted. Never cross a
-closed gate, never cross the tracks when a train is coming, follow road signs and traffic rules, and don't use the
-phone while driving. The software is provided "as is", without warranty of any kind (see the [MIT License](LICENSE)).
 
 ## Contact
 

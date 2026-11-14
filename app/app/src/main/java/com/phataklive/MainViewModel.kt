@@ -6,7 +6,6 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
@@ -20,18 +19,10 @@ import com.phataklive.data.PhatakDb
 import com.phataklive.data.Station
 import com.phataklive.data.StationBoard
 import com.phataklive.gate.GateEngine
-import com.phataklive.net.GoogleDirections
 import com.phataklive.net.GoogleMaps
-import com.phataklive.route.CrossingPlanner
-import com.phataklive.route.Option
-import com.phataklive.route.Place
-import com.phataklive.route.Plan
-import com.phataklive.route.Trip
 import com.phataklive.search.LiveSearch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,9 +37,6 @@ import kotlin.coroutines.resume
 
 enum class LocationAccess { UNKNOWN, GRANTED, DENIED, BLOCKED }
 
-/** Log tag: `adb logcat -s PhatakLive` shows why an online call failed. */
-const val TAG = "PhatakLive"
-
 /** Preset search radii in Settings; any other value in range is a custom radius. */
 val RADIUS_PRESETS_KM = listOf(10, 20)
 const val MIN_RADIUS_KM = 1
@@ -60,14 +48,7 @@ sealed class Problem {
     data object WaitingForLocation : Problem()
     data class NoGateFound(val query: String) : Problem()
     data class NoTrainFound(val query: String) : Problem()
-    data class PlaceNotFound(val query: String) : Problem()
-    data object RouteFailed : Problem()
-    data object NoCrossings : Problem()
-    data object TooFar : Problem()
 }
-
-/** Which place box of the Route tab a suggestion list belongs to. */
-enum class RouteField { FROM, TO }
 
 data class UiState(
     // location
@@ -89,8 +70,6 @@ data class UiState(
     val loading: Boolean = false,
     val lastRefreshSec: Long? = null,
     val offline: Boolean = false,
-    /** online, but live train times couldn't be loaded (Google busy or refusing): times are from the timetable */
-    val liveFailed: Boolean = false,
     // gate search
     val gateQuery: String = "",
     val gateSearching: Boolean = false,
@@ -102,39 +81,18 @@ data class UiState(
     val trainSearching: Boolean = false,
     val train: LiveSearch.TrainStatus? = null,
     val trainProblem: Problem? = null,
-    // route: best way across the railway
-    /** null: start from the phone's location */
-    val routeFrom: Place? = null,
-    val routeTo: Place? = null,
-    val routeMode: GoogleDirections.Mode = GoogleDirections.Mode.TWO_WHEELER,
-    val routeSuggest: List<Place> = emptyList(),
-    val routeSuggestFor: RouteField? = null,
-    /** planning while not null */
-    val routeStep: CrossingPlanner.Step? = null,
-    val routePlan: Plan? = null,
-    val routeOptions: List<Option> = emptyList(),
-    val routeProblem: Problem? = null,
-    /** a trip notification was tapped: show the Route tab (one-shot) */
-    val openRoute: Boolean = false,
-    /** last run crashed or froze: a report the user may share */
-    val crashReport: String? = null,
-    /** the one-time Route safety notice was accepted */
-    val routeNoticeAccepted: Boolean = false,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val db = PhatakDb.get(app)
     private val engine = GateEngine(db)
     private val search = LiveSearch(db)
-    private val planner = CrossingPlanner(db, engine)
     private val prefs = app.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(UiState(
         lang = prefs.getString("lang", defaultLang())!!,
         radiusKm = prefs.getInt("radius", 10).coerceIn(MIN_RADIUS_KM, MAX_RADIUS_KM),
         theme = prefs.getString("theme", "auto")!!,
-        routeNoticeAccepted = prefs.getBoolean("route_notice_ok", false),
-        routeMode = runCatching { GoogleDirections.Mode.valueOf(prefs.getString("route_mode", "")!!) }.getOrDefault(GoogleDirections.Mode.TWO_WHEELER),
     ))
     val state: StateFlow<UiState> = _state
 
@@ -145,8 +103,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var gateJob: Job? = null
     private var suggestJob: Job? = null
     private var trainJob: Job? = null
-    private var routeJob: Job? = null
-    private var placeJob: Job? = null
     @Volatile private var foreground = true
 
     /** biases suggestions to India before the first location fix */
@@ -156,17 +112,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun defaultLang() = when (Locale.getDefault().language) { "hi" -> "Hindi"; "bn" -> "Bengali"; else -> "English" }
 
     init {
-        viewModelScope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { CrashReport.pending(getApplication()) }.getOrNull() }
-            if (r != null) _state.update { it.copy(crashReport = r) }
-        }
         // gate states tick every 20 s (no network); online data refreshes every 3 min while the app is open
         viewModelScope.launch {
             while (isActive) {
                 delay(20_000)
                 if (!foreground) continue
                 recompute()
-                recomputeRoute()
                 val last = _state.value.lastRefreshSec ?: continue
                 if (now() - last > 180 && !_state.value.loading) refresh()
             }
@@ -232,14 +183,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return fresh ?: lm.getLastKnownLocation(provider) ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
     }
 
-    /** The phone has a working internet connection (Android has checked it), not just Wi-Fi or mobile data switched on. */
-    private fun hasInternet(): Boolean {
-        val cm = getApplication<Application>().getSystemService(android.net.ConnectivityManager::class.java) ?: return true
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-
     private fun locationEnabled(): Boolean =
         LocationManagerCompat.isLocationEnabled(getApplication<Application>().getSystemService(LocationManager::class.java))
 
@@ -280,11 +223,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             gates = res.gates.filter { Geo.km(user, it.pos) <= radius }
             live = res.live
             liveErrors = res.errors
-            // "offline" only when the phone really has no internet; Google failing while online is a different message
-            val liveFailed = res.live.isEmpty() && res.errors.isNotEmpty()
-            if (liveFailed) Log.w(TAG, "live trains failed: ${res.errors}")
-            val noNet = liveFailed && !hasInternet()
-            _state.update { it.copy(offline = noNet, liveFailed = liveFailed && !noNet, lastRefreshSec = now()) }
+            _state.update { it.copy(offline = res.live.isEmpty() && res.errors.isNotEmpty(), lastRefreshSec = now()) }
             recompute()
             _state.update { it.copy(loading = false) }
         }
@@ -392,166 +331,4 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         trainJob?.cancel()
         _state.update { it.copy(trainQuery = "", train = null, trainProblem = null, trainSearching = false) }
     }
-
-    // ------------------------------------------------------------------ route: best crossing
-
-    private val coords = Regex("^\\s*(-?\\d{1,2}(?:\\.\\d+)?)\\s*,\\s*(-?\\d{1,3}(?:\\.\\d+)?)\\s*$")
-
-    /** Places for a typed name: Google Maps (anywhere, spelling corrected) and railway stations; "lat,lng" works too. */
-    private suspend fun findPlaces(q: String): List<Place> = withContext(Dispatchers.IO) {
-        coords.matchEntire(q)?.let { m ->
-            val p = LatLng(m.groupValues[1].toDouble(), m.groupValues[2].toDouble())
-            if (p.lat in 6.0..37.5 && p.lng in 68.0..98.0) return@withContext listOf(Place(q.trim(), null, p))
-        }
-        val near = _state.value.user ?: INDIA_CENTRE
-        // Google Maps' own autocomplete (half-typed words), Google Maps search (whole words, local shops) and stations
-        val (auto, maps) = coroutineScope {
-            val a = async { runCatching { GoogleMaps.autocomplete(q, near) }.onFailure { Log.w(TAG, "autocomplete '$q'", it) }.getOrDefault(emptyList()) }
-            val m = async { runCatching { GoogleMaps.searchPlaces(q, near, null) }.onFailure { Log.w(TAG, "search '$q'", it) }.getOrDefault(emptyList()) }
-            a.await() to m.await().take(6)
-        }
-        val stations = runCatching { db.findStations(Fuzzy.placePart(q).ifBlank { q }, 2) }.getOrDefault(emptyList())
-            .map { Place("${it.name} (${it.code})", null, it.pos) }
-        val all = (auto + maps).map { Place(it.name, it.address, it.pos) } + stations
-        // the same name within 3 km is the same place listed twice (Google often has two entries)
-        all.fold(ArrayList<Place>()) { kept, p ->
-            if (kept.none { it.name.equals(p.name, ignoreCase = true) && Geo.km(it.pos, p.pos) < 3.0 }) kept += p
-            kept
-        }
-            // the name that matches what was typed best first (in steps, so close spellings tie), then places within
-            // 40 km (people mostly go somewhere near), then Google's order: "Bandel Junction" beats a nearby "Bike Junction"
-            .sortedWith(compareByDescending<Place> { (Fuzzy.matchScore(q, it.name) * 5).toInt() }
-                .thenBy { if (Geo.km(near, it.pos) <= 40.0) 0 else 1 })
-            .take(7)
-    }
-
-    /** Suggestions under a place box while the user types (after a short pause). */
-    fun onRouteTyping(field: RouteField, q: String) {
-        placeJob?.cancel()
-        if (q.trim().length < 2) {
-            _state.update { it.copy(routeSuggest = emptyList(), routeSuggestFor = null) }
-            return
-        }
-        placeJob = viewModelScope.launch {
-            delay(350)
-            val list = findPlaces(q.trim())
-            _state.update { it.copy(routeSuggest = list, routeSuggestFor = field) }
-        }
-    }
-
-    /** [place] null: the start goes back to "My location". Picking the destination plans the trip right away. */
-    fun pickRoutePlace(field: RouteField, place: Place?) {
-        placeJob?.cancel()
-        _state.update {
-            val s = it.copy(routeSuggest = emptyList(), routeSuggestFor = null, routeProblem = null)
-            if (field == RouteField.FROM) s.copy(routeFrom = place) else s.copy(routeTo = place)
-        }
-        val s = _state.value
-        if (s.routeTo != null && (field == RouteField.TO || s.routePlan != null || s.routeProblem != null)) planRoute()
-    }
-
-    /** Search key pressed without picking a suggestion: the best match is taken. */
-    fun submitRoutePlace(field: RouteField, q: String) {
-        if (q.isBlank()) return
-        placeJob?.cancel()
-        placeJob = viewModelScope.launch {
-            val first = findPlaces(q.trim()).firstOrNull()
-            if (first == null) _state.update { it.copy(routeProblem = Problem.PlaceNotFound(q.trim()), routeSuggest = emptyList(), routeSuggestFor = null) }
-            else pickRoutePlace(field, first)
-        }
-    }
-
-    /**
-     * Find best crossing: text typed in a box but not picked from the suggestions is looked up first (best match),
-     * so the trip always starts and ends where the boxes say. An empty start box means "My location".
-     */
-    fun findBest(fromText: String, toText: String) {
-        placeJob?.cancel()
-        placeJob = viewModelScope.launch {
-            val s = _state.value
-            var from = s.routeFrom
-            var to = s.routeTo
-            if (fromText.isBlank()) from = null
-            else if (fromText.trim() != from?.name) from = findPlaces(fromText.trim()).firstOrNull() ?: run {
-                _state.update { it.copy(routeProblem = Problem.PlaceNotFound(fromText.trim())) }; return@launch
-            }
-            if (toText.isNotBlank() && toText.trim() != to?.name) to = findPlaces(toText.trim()).firstOrNull() ?: run {
-                _state.update { it.copy(routeProblem = Problem.PlaceNotFound(toText.trim())) }; return@launch
-            }
-            _state.update { it.copy(routeFrom = from, routeTo = to, routeSuggest = emptyList(), routeSuggestFor = null) }
-            planRoute()
-        }
-    }
-
-    fun clearRouteTo() {
-        routeJob?.cancel()
-        placeJob?.cancel()
-        _state.update { it.copy(routeTo = null, routePlan = null, routeOptions = emptyList(), routeStep = null, routeProblem = null,
-            routeSuggest = emptyList(), routeSuggestFor = null) }
-    }
-
-    fun setRouteMode(mode: GoogleDirections.Mode) {
-        if (mode == _state.value.routeMode) return
-        prefs.edit().putString("route_mode", mode.name).apply()
-        _state.update { it.copy(routeMode = mode) }
-        if (_state.value.routeTo != null && _state.value.routePlan != null) planRoute()
-    }
-
-    fun planRoute() {
-        val s = _state.value
-        val to = s.routeTo ?: return
-        val from = s.routeFrom ?: s.user?.let { Place(s.address ?: "", null, it) } ?: run {
-            _state.update { it.copy(routeProblem = Problem.WaitingForLocation) }
-            return
-        }
-        routeJob?.cancel()
-        routeJob = viewModelScope.launch {
-            _state.update { it.copy(routeStep = CrossingPlanner.Step.CROSSINGS, routeProblem = null, routePlan = null, routeOptions = emptyList()) }
-            val plan = try {
-                // the whole plan (Google calls and line geometry) off the screen thread
-                withContext(Dispatchers.Default) {
-                    planner.plan(from, s.routeFrom == null, to, s.routeMode, live, s.user) { step -> _state.update { it.copy(routeStep = step) } }
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: CrossingPlanner.TooFar) {
-                _state.update { it.copy(routeStep = null, routeProblem = Problem.TooFar) }
-                return@launch
-            } catch (e: Exception) {
-                _state.update { it.copy(routeStep = null, routeProblem = Problem.RouteFailed) }
-                return@launch
-            }
-            val options = withContext(Dispatchers.Default) { planner.evaluate(plan, null, now()) }
-            _state.update {
-                // no crossing found: the plan itself says why (same side, or railway not checked)
-                it.copy(routeStep = null, routePlan = plan, routeOptions = options, routeProblem = null)
-            }
-        }
-    }
-
-    /** Every tick: gate waits move with the clock; live trains are fetched again every 3 min (a running trip does its own). */
-    private suspend fun recomputeRoute() {
-        val plan = _state.value.routePlan ?: return
-        if (_state.value.routeStep != null) return
-        var p = plan
-        if (now() - plan.liveFetchedSec >= 180 && Trip.state.value == null)
-            p = runCatching { planner.refreshLive(plan) }.getOrDefault(plan.copy(liveFetchedSec = now()))
-        val here = if (p.fromIsMe) _state.value.user else null
-        val options = withContext(Dispatchers.Default) { planner.evaluate(p, here, now()) }
-        _state.update { if (it.routePlan?.createdSec == plan.createdSec) it.copy(routePlan = p, routeOptions = options) else it }
-    }
-
-    fun acceptRouteNotice() {
-        prefs.edit().putBoolean("route_notice_ok", true).apply()
-        _state.update { it.copy(routeNoticeAccepted = true) }
-    }
-
-    /** The crash report was shared or dismissed: don't offer it again. */
-    fun crashReportDone() {
-        CrashReport.clear(getApplication())
-        _state.update { it.copy(crashReport = null) }
-    }
-
-    fun requestOpenRoute() = _state.update { it.copy(openRoute = true) }
-    fun routeOpened() = _state.update { it.copy(openRoute = false) }
 }

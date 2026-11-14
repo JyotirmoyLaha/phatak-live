@@ -13,7 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.phataklive.route.TripService
 import com.phataklive.update.UpdateChecker
 import kotlinx.coroutines.launch
 import com.phataklive.ui.MainScreen
@@ -49,9 +48,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        CrashReport.install(this)
+        // 1.3.0-1.3.6 had a Route tab with trip alerts; it was removed. Clear its leftover notification and channels.
+        runCatching {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            nm.cancel(41); nm.cancel(42)
+            nm.deleteNotificationChannel("trip"); nm.deleteNotificationChannel("trip_alert")
+        }
         // once per launch: drop any old downloaded update, then look for a newer release on GitHub
-        if (intent?.getBooleanExtra(TripService.EXTRA_OPEN_ROUTE, false) == true) vm.requestOpenRoute()
         if (savedInstanceState == null) lifecycleScope.launch {
             UpdateChecker.clearCache(this@MainActivity)
             UpdateChecker.check()
@@ -79,12 +82,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-    }
-
-    /** A trip notification tapped while the app is open: show the Route tab. */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        if (intent.getBooleanExtra(TripService.EXTRA_OPEN_ROUTE, false)) vm.requestOpenRoute()
     }
 
     override fun onResume() {
