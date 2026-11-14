@@ -1,41 +1,91 @@
 <div align="center">
 
-# 🚦 Phatak Live
+<img src="docs/readme/hero.webp" alt="Phatak Live: know before you reach the phatak. Open or closed right now, when it reopens, and the train behind it, for any rail gate in India." width="100%">
 
-### Know before you reach the railway gate.
+<br><br>
 
-**Live open/closed status of every railway level crossing (*phatak*) around you, anywhere in India,
-with the exact closing and reopening time, the train causing it, and how late that train is.**
+[![Download the latest APK](https://img.shields.io/github/v/release/JyotirmoyLaha/phatak-live?label=Download%20APK&style=for-the-badge&logo=android&logoColor=white&labelColor=0B1B3A&color=FFB020)](https://github.com/JyotirmoyLaha/phatak-live/releases/latest)
 
-[**⬇ Download the latest APK**](https://github.com/JyotirmoyLaha/phatak-live/releases/latest)
+![Android 10+](https://img.shields.io/badge/Android-10%2B-1C3A72?style=flat-square)
+![Size](https://img.shields.io/badge/size-8%20MB-1C3A72?style=flat-square)
+![No ads](https://img.shields.io/badge/ads%20%C2%B7%20tracking-none-0F7A47?style=flat-square)
+![Languages](https://img.shields.io/badge/EN%20%C2%B7%20%E0%A4%B9%E0%A4%BF%E0%A4%A8%E0%A5%8D%E0%A4%A6%E0%A5%80%20%C2%B7%20%E0%A6%AC%E0%A6%BE%E0%A6%82%E0%A6%B2%E0%A6%BE-1C3A72?style=flat-square)
+![MIT](https://img.shields.io/badge/license-MIT-1C3A72?style=flat-square)
 
-`Android 10+` · `8 MB` · `No account, no ads, no tracking` · `English · हिन्दी · বাংলা`
-
-[Privacy Policy](PRIVACY.md) · [MIT License](LICENSE) · [Contact](https://github.com/JyotirmoyLaha/phatak-live/issues)
+<sub>
+<a href="#the-problem">The problem</a> &nbsp;·&nbsp;
+<a href="#the-app">The app</a> &nbsp;·&nbsp;
+<a href="#who-its-for">Who it's for</a> &nbsp;·&nbsp;
+<a href="#how-it-works">How it works</a> &nbsp;·&nbsp;
+<a href="#the-gate-timing-rule">Timing rule</a> &nbsp;·&nbsp;
+<a href="#how-its-different">How it's different</a> &nbsp;·&nbsp;
+<a href="#privacy">Privacy</a> &nbsp;·&nbsp;
+<a href="#under-the-hood">Under the hood</a>
+</sub>
 
 </div>
 
----
+<br>
 
-## Why this app exists
+<a id="the-problem"></a>
 
-India still has **17,777 railway level crossings, 97% of them manned gates** (Indian Railways, April 2024, via Dataful).
-Every day millions of people on two-wheelers, autos, buses, ambulances and school vans reach a gate that has just
-gone down, and wait without knowing for how long.
+<sub><b>01 &nbsp;—&nbsp; THE PROBLEM</b></sub>
 
-That waiting is not just lost time:
+## Millions wait at a railway gate every day, with no idea for how long.
 
-- **22,695 accidents at railway level crossings** were recorded by the NCRB between 2014 and 2024. Not knowing how
-  long a gate will stay down is exactly what tempts people to rush it; knowing the time removes that guess.
-- In the Eastern Railway zone alone, an average of **31 trains a day were delayed in 2024-25** because road traffic
-  stopped gates from closing on time (Millennium Post, 2025).
+India still has **17,777 railway level crossings, 97% of them manned gates**. Every day people on two-wheelers, autos,
+buses, ambulances and school vans reach a gate that has just gone down, and wait. Two minutes? Fifteen? Nobody says.
 
-Phatak Live answers the one question nobody answers today, before you leave home: ***"Is the phatak open, and if not,
-when will it open?"***
+<img src="docs/readme/numbers.webp" alt="By the numbers: 17,777 railway level crossings in India; 97% of them are manned gates; 22,695 accidents at level crossings from 2014 to 2024; 31 trains delayed a day in the Eastern Railway zone by gates that couldn't close." width="100%">
 
-### Who it helps
+That waiting is not just lost time. The NCRB recorded **22,695 accidents at railway level crossings** between 2014 and
+2024, and not knowing how long a gate will stay down is exactly what tempts people to rush it. It cuts the other way
+too: in the Eastern Railway zone, an average of **31 trains a day were delayed in 2024-25** because road traffic stopped
+gates from closing on time.
 
-| Who | How |
+> ### *"Is the phatak open, and if not, when will it open?"*
+> Phatak Live answers the one question nobody answers today, before you leave home.
+
+<br>
+
+<a id="the-app"></a>
+
+<sub><b>02 &nbsp;—&nbsp; THE APP</b></sub>
+
+## Open the app, and the answer is already there.
+
+It opens straight to your area: the place you're in, the rail gates around you, and whether each one is **open,
+closing soon or closed** right now, with a countdown to the next change and the train causing it.
+
+<img src="docs/readme/screens.webp" alt="Four real screens: 01 Nearby, every gate around you with a live countdown and the nearest stations. 02 Find gate, any gate in India by gate, town or station name. 03 Gate status, the closing window, reopening time and the trains behind it. 04 Trains, live delay, last seen, next stops and platforms." width="100%">
+
+| | |
+|---|---|
+| 🚦 **Nearby** | A hero card with a pulsing state light, a big countdown ("Opens in 4 min") and a closing-window timeline with a *now* marker. Below it, every other gate (OPEN / CLOSING SOON / CLOSED) and the next 3 hours at each nearby station, including trains that pass without stopping. |
+| 🔎 **Find gate** | Any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type, and small spelling mistakes are fine. |
+| 🚆 **Trains** | Live delay, where the train was last seen, next stops with platforms, and "Did you mean…?" when a name is ambiguous. Train numbers work in Hindi or Bengali digits too. |
+| 🏷️ **Honest times** | Every time is labelled **LIVE** (confirmed by live data) or **TIMETABLE** (not live-confirmed), and gate times are always shown as estimates. |
+
+<img src="docs/readme/themes.webp" alt="Light, dark or auto: the same Nearby screen in the light and dark frosted-glass themes." width="100%">
+
+- **Light, dark or auto.** Frosted glass in both; Auto follows your phone.
+- **Three languages.** The whole app switches between **English, हिन्दी and বাংলা** with one tap; on first launch it
+  follows your phone's language.
+- **Your radius.** Search **10 or 20 km** around you, or set your own distance up to **100 km**.
+- **Always fresh.** Auto-refresh every 3 minutes while open, gate states updated every 20 seconds, and pull down on any
+  tab to refresh.
+- **Updates itself.** When a new version is out, the app shows what's new and installs it in one tap, over the current
+  version, keeping your settings.
+
+<br>
+
+<a id="who-its-for"></a>
+
+<sub><b>03 &nbsp;—&nbsp; WHO IT'S FOR</b></sub>
+
+## Everyone who has to cross the tracks.
+
+| Who | How it helps |
 |---|---|
 | 🛵 **Daily commuters** | Check the gate on the way; leave 5 minutes earlier or later instead of waiting 15 at a closed gate. |
 | 🚑 **Ambulance and emergency drivers** | See that the gate ahead closes in 3 minutes and take another crossing or an overbridge, while it still matters. |
@@ -45,32 +95,51 @@ when will it open?"***
 | 🚉 **People going to the station** | Check a train's live delay, platform and next stops, and whether the gate on the way will close for it. |
 | 🧭 **Anyone in an unfamiliar town** | Search any gate by name, in English, Hindi or Bengali. |
 
----
+<br>
 
-## How it works
+<a id="how-it-works"></a>
 
-Phatak Live **computes** each gate's status from train movements. It doesn't wait for someone to report it.
+<sub><b>04 &nbsp;—&nbsp; HOW IT WORKS</b></sub>
 
-1. **Where you are.** GPS gives your location; the app shows the place name and the railway stations within
-   10 or 20 km (or any distance you set, up to 100 km) from its built-in rail database covering all of India.
+## Computed, not crowd-reported.
+
+Phatak Live **works out** each gate's status from train movements. It doesn't wait for someone to report it, so it
+works on the first day in any town in India.
+
+<img src="docs/readme/how.webp" alt="How it works in four steps: 01 where you are, 02 which gates, 03 which trains, including ones that don't stop, 04 gate status: open, closing soon or closed." width="100%">
+
+1. **Where you are.** GPS gives your location; the app shows the place name and the railway stations within your
+   radius from its built-in rail database covering all of India.
 2. **Which gates are near.** Rail gates and level crossings around you, and near each nearby station, are looked up
    live on the map. Look-alikes such as station entrances or streets named "Railway Gate Road" are filtered out.
-3. **Which trains pass them.** The built-in timetable covers trains across India, **including stations a
-   train passes without stopping**: those trains close gates too.
-4. **When each train reaches the gate.** The Gate Engine places the gate on the track between two consecutive
-   stations and interpolates the train's time at the gate by distance.
-5. **Live check.** Live departures at the nearby stations give each train's real expected time, so the delay is
-   applied to the gate. Every time is marked **LIVE** (confirmed by live data) or **TIMETABLE** (not live-confirmed).
-6. **Gate status.** Closing windows are built and merged, then each gate is shown as **OPEN**, **CLOSING SOON** or
+3. **Which trains pass them.** The built-in timetable covers trains across India, **including stations a train passes
+   without stopping**: those trains close gates too.
+4. **When each train reaches the gate.** The gate is placed on the track between two consecutive stations, and the
+   train's time at the gate is interpolated by distance.
+5. **Live check.** Live departures at the nearby stations give each train's real expected time, so its delay is applied
+   to the gate.
+6. **Gate status.** Closing windows are built and merged, and each gate is shown as **OPEN**, **CLOSING SOON** or
    **CLOSED**, with a countdown and the train(s) causing it.
 
-### Gate timing rule
+<br>
 
-There is no single published "close X minutes before the train" figure for Indian Railways. The rules tie the gate
-to the station master sending the train off: before taking off the departure signal (or giving line clear) for a
-train, the station master gives the gateman the train's number and direction; the gateman closes and locks the gate
-and confirms with his private number (G&SR SR 16.03/4). So the gate stays down for the whole run from the station
-before the gate, and the lead time depends on where the gate is. Phatak Live models that:
+<a id="the-gate-timing-rule"></a>
+
+<sub><b>05 &nbsp;—&nbsp; THE GATE TIMING RULE</b></sub>
+
+## When a gate goes down, and when it comes back up.
+
+There is no single published "close X minutes before the train" figure for Indian Railways. The rules tie the gate to
+the station master sending the train off: before taking off the departure signal (or giving line clear), the station
+master gives the gateman the train's number and direction; the gateman closes and locks the gate and confirms with his
+private number (G&SR SR 16.03/4). So the gate stays down for the whole run from the station before it, and the lead
+time depends on where the gate is.
+
+<img src="docs/readme/timing.webp" alt="Gate timing: the gate closes about 3 minutes before the train leaves the station before the gate, stays down while the train runs to it (about 4 to 15 minutes), and opens about 3 minutes after the train has passed." width="100%">
+
+<details>
+<summary><b>The full rule, with evidence</b></summary>
+<br>
 
 | | Phatak Live | Evidence |
 |---|---|---|
@@ -84,24 +153,22 @@ before the gate, and the lead time depends on where the gate is. Phatak Live mod
 | Live train missing from the timetable (specials) | live time at the nearest station ± travel time at ~40 km/h, closing ~8 min ahead | |
 | Goods trains | not shown (no timetable); the in-app info box says a gate can also close for them | |
 
-Long closures are real: commuters in Amritsar reported a gate shut for 20–26 min ([Tribune, May 2025](https://www.tribuneindia.com/news/amritsar/prolonged-closure-of-gates-at-rly-crossing-irks-commuters)).
+</details>
 
+Long closures are real: commuters in Amritsar reported a gate shut for 20–26 min
+([Tribune, May 2025](https://www.tribuneindia.com/news/amritsar/prolonged-closure-of-gates-at-rly-crossing-irks-commuters)).
 Real closures vary by gate (interlocked or not, busy or quiet line) and by gateman, so the app always shows times as
 estimates ("~") and says whether the train time behind them is live.
 
----
+<br>
 
-## How Phatak Live differs from other apps
+<a id="how-its-different"></a>
 
-We looked at the apps that already try to answer "is the crossing open?" (as of November 2026):
+<sub><b>06 &nbsp;—&nbsp; HOW IT'S DIFFERENT</b></sub>
 
-| App | How it works | Coverage | Weak points |
-|---|---|---|---|
-| **Fatak – Live Crossing Status** (Android, fatak.app) | Status for a fixed list of crossings; data said to come from NTES ([Tribune, July 2026](https://www.tribuneindia.com/news/punjab/family-tragedy-inspires-muktsar-youth-to-build-railway-crossing-alert-application/)) | **14 crossings in 7 towns of Punjab** (July 2026) | Only crossings the team has added; method not explained in the app listing; ad-supported with Google AdMob plus Firebase and Mixpanel analytics ([AppGoblin](https://appgoblin.info/apps/com.fatakv2)) |
-| **RailRadar** (iOS) | Crowd reports: users tap Open / Blocked ([App Store](https://apps.apple.com/us/app/id6749937816)) | Wherever users report | Status is only as fresh as the last report; no closing time; iPhone only |
-| **Train-status apps** (ixigo Trains, RailYatri, NTES, …) | Live running status of a train you search | All India | Built for passengers: no gates, and trains that pass a station without stopping are usually not shown |
+## Any gate, on day one, in any town.
 
-**Why Phatak Live is different**
+We looked at the apps that already try to answer "is the crossing open?" (as of November 2026).
 
 | | Fatak | Crowd-report apps | Train-status apps | **Phatak Live** |
 |---|---|---|---|---|
@@ -115,28 +182,45 @@ We looked at the apps that already try to answer "is the crossing open?" (as of 
 | Ads / tracking | ads + analytics SDKs | — | usually ads | **none** |
 | Open-close notifications | ✓ | some | ✗ | not yet (on the roadmap) |
 
-Fatak shows there is real demand: thousands of people check their local crossing every day. Phatak Live's approach
-**computes** the status for any gate instead of curating a list or waiting for reports, so it works on the first day
-in any town in India.
+<details>
+<summary><b>The apps we compared</b></summary>
+<br>
 
----
+| App | How it works | Coverage | Weak points |
+|---|---|---|---|
+| **Fatak – Live Crossing Status** (Android, fatak.app) | Status for a fixed list of crossings; data said to come from NTES ([Tribune, July 2026](https://www.tribuneindia.com/news/punjab/family-tragedy-inspires-muktsar-youth-to-build-railway-crossing-alert-application/)) | **14 crossings in 7 towns of Punjab** (July 2026) | Only crossings the team has added; method not explained in the app listing; ad-supported with Google AdMob plus Firebase and Mixpanel analytics ([AppGoblin](https://appgoblin.info/apps/com.fatakv2)) |
+| **RailRadar** (iOS) | Crowd reports: users tap Open / Blocked ([App Store](https://apps.apple.com/us/app/id6749937816)) | Wherever users report | Status is only as fresh as the last report; no closing time; iPhone only |
+| **Train-status apps** (ixigo Trains, RailYatri, NTES, …) | Live running status of a train you search | All India | Built for passengers: no gates, and trains that pass a station without stopping are usually not shown |
 
-## Features
+</details>
 
-- **Opens straight to your area**: place name, nearest stations, every rail gate found around you.
-- **Hero gate card**: pulsing state light, big countdown ("Opens in 4 min"), closing-window timeline with a "now" marker.
-- **Gate list** with OPEN / CLOSING SOON / CLOSED, LIVE / TIMETABLE badge, trains and their delays, directions.
-- **Find gate**: any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type (gates from Google Maps and "Gates near … station"), and small spelling mistakes are fine (Google corrects them; station names are matched by spelling similarity).
-- **Trains**: live delay, last seen near, next stops with platforms; "Did you mean…?" when a typed name is ambiguous.
-  Train numbers can be typed in Hindi or Bengali digits too.
-- **Station boards**: next 3 hours at each nearby station, including trains that pass without stopping.
-- **Three languages**: the whole app switches between **English, हिन्दी and বাংলা** with one tap (EN / हि / বা).
-  On first launch it follows your phone's language.
-- **Frosted-glass look, light and dark**: Auto (follows the phone), Light or Dark in Settings, next to language and search radius; pull down on any tab to refresh; auto-refresh every 3 minutes while open, gate states updated every 20 seconds.
-- **In-app updates**: when a new version is released, the app shows what's new and updates itself in one tap.
-  It installs over the current version, so there's nothing to uninstall and your settings are kept.
+Fatak shows there is real demand: thousands of people check their local crossing every day. Phatak Live **computes**
+the status for any gate instead of curating a list or waiting for reports.
 
-## Architecture
+<br>
+
+<a id="privacy"></a>
+
+<sub><b>07 &nbsp;—&nbsp; PRIVACY</b></sub>
+
+## Your location stays on your phone.
+
+- **Location** (precise or approximate, your choice) is used on the phone to find gates and stations near you. The app
+  explains this before Android asks, and works without it (search by name).
+- Map and live-train lookups go directly from your phone to the public map service, as when you open a map.
+- **No account, no ads, no analytics**, no notifications permission. We run no server and receive none of your data.
+- Timetable and station data are bundled in the app for offline use and may be out of date; live times are checked
+  online, and every time is labelled **LIVE** or **TIMETABLE**.
+
+Full details: **[Privacy Policy](PRIVACY.md)**.
+
+<br>
+
+<a id="under-the-hood"></a>
+
+<sub><b>08 &nbsp;—&nbsp; UNDER THE HOOD</b></sub>
+
+## Kotlin, Jetpack Compose, and a gate engine.
 
 ```
 GPS ─► place name ─► built-in rail database (stations, trains, stops incl. pass-through)
@@ -160,30 +244,7 @@ GPS ─► place name ─► built-in rail database (stations, trains, stops inc
 | Gate Engine | `app/.../gate/GateEngine.kt` |
 | Screens, theme, translations | `app/.../ui/` |
 
-## Privacy and permissions
-
-- **Location** (precise or approximate, your choice) is used on the phone to find gates and stations near you.
-  The app explains this before Android asks, and works without it (search by name).
-- Map and live-train lookups go directly from your phone to the public map service, as when you open a map.
-- No account, no ads, no analytics, no notifications permission. We run no server and receive none of your data.
-- Full details: **[Privacy Policy](PRIVACY.md)**.
-
-## Data
-
-Timetable and station data are bundled in the app for offline use and may be out of date. Live train times and delays
-are checked online when you open the app, and every time is labelled **LIVE** or **TIMETABLE** so you always know which
-one you are seeing.
-
-## Roadmap
-
-- 🔔 Notify me when a gate on my daily route is about to close
-- 🗺️ Gates on a map view, with route-aware warnings
-- 🌐 More languages (Odia, Assamese, Marathi, Tamil, …)
-- 🤝 Optional crowd confirmations ("gate is down now") to complement the computed status
-
-## Build from source
-
-Requirements: JDK 17 and Android SDK 36.
+**Build from source.** Requirements: JDK 17 and Android SDK 36.
 
 ```bash
 git clone https://github.com/JyotirmoyLaha/phatak-live.git
@@ -193,14 +254,23 @@ cd phatak-live/app
 
 Release builds read signing details from `app/keystore.properties` (not in the repo).
 
+<br>
+
+## Roadmap
+
+- 🔔 Notify me when a gate on my daily route is about to close
+- 🗺️ Gates on a map view, with route-aware warnings
+- 🌐 More languages (Odia, Assamese, Marathi, Tamil, …)
+- 🤝 Optional crowd confirmations ("gate is down now") to complement the computed status
+
 ## Disclaimer
 
-Phatak Live is an **independent project**. It is not affiliated with or endorsed by Indian Railways, CRIS, IRCTC or
-Google.
+> [!IMPORTANT]
+> Gate times are **estimates** computed from train timings and live data. Real gate operation depends on the gateman
+> and signalling. **Always obey the gate, the signals and the gateman.**
 
-Gate times are **estimates** computed from train timings and live data. Real gate operation depends on the gateman and
-signalling. **Always obey the gate, the signals and the gateman.** Live data comes from public web endpoints that may
-change without notice.
+Phatak Live is an **independent project**. It is not affiliated with or endorsed by Indian Railways, CRIS, IRCTC or
+Google. Live data comes from public web endpoints that may change without notice.
 
 ## Contact
 
