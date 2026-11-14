@@ -37,6 +37,12 @@ import kotlin.coroutines.resume
 
 enum class LocationAccess { UNKNOWN, GRANTED, DENIED, BLOCKED }
 
+/** Preset search radii in Settings; any other value in range is a custom radius. */
+val RADIUS_PRESETS_KM = listOf(10, 20)
+const val MIN_RADIUS_KM = 1
+/** Farther than this the nearby scan gets slow and the map lookups too thin to be useful: Find gate covers distant places. */
+const val MAX_RADIUS_KM = 100
+
 /** Messages are keys, not text, so the screen shows them in the language the user picked. */
 sealed class Problem {
     data object WaitingForLocation : Problem()
@@ -53,7 +59,7 @@ data class UiState(
     val accuracyM: Float? = null,
     val address: String? = null,
     // settings
-    val radiusKm: Int = 15,
+    val radiusKm: Int = 10,
     val lang: String = "English",
     /** "auto" | "light" | "dark" (ui.ThemeMode) */
     val theme: String = "auto",
@@ -85,7 +91,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(UiState(
         lang = prefs.getString("lang", defaultLang())!!,
-        radiusKm = prefs.getInt("radius", 15),
+        radiusKm = prefs.getInt("radius", 10).coerceIn(MIN_RADIUS_KM, MAX_RADIUS_KM),
         theme = prefs.getString("theme", "auto")!!,
     ))
     val state: StateFlow<UiState> = _state
@@ -137,9 +143,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun hasPermission() = ContextCompat.checkSelfPermission(getApplication(), android.Manifest.permission.ACCESS_COARSE_LOCATION) ==
         android.content.pm.PackageManager.PERMISSION_GRANTED
 
+    /** Search radius in km; the UI only offers [MIN_RADIUS_KM]..[MAX_RADIUS_KM], and anything else is clamped here too. */
     fun setRadius(km: Int) {
-        prefs.edit().putInt("radius", km).apply()
-        _state.update { it.copy(radiusKm = km) }
+        val r = km.coerceIn(MIN_RADIUS_KM, MAX_RADIUS_KM)
+        prefs.edit().putInt("radius", r).apply()
+        _state.update { it.copy(radiusKm = r) }
         refresh()
     }
 

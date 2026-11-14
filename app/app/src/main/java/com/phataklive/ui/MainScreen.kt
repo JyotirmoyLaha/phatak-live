@@ -134,6 +134,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phataklive.LocationAccess
+import com.phataklive.MAX_RADIUS_KM
+import com.phataklive.MIN_RADIUS_KM
+import com.phataklive.RADIUS_PRESETS_KM
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.KeyboardType
 import com.phataklive.R
 import com.phataklive.MainViewModel
 import com.phataklive.Problem
@@ -209,7 +214,7 @@ fun MainScreen(
         BottomBar(tab, t, haze, Modifier.align(Alignment.BottomCenter)) { tab = it }
     }
     }
-    if (showSettings) SettingsSheet(s, t, vm) { showSettings = false }
+    if (showSettings) SettingsSheet(s, t, vm, onFindGate = { showSettings = false; tab = 1 }) { showSettings = false }
     AppUpdate(t)
 }
 
@@ -426,7 +431,7 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onSettings: ()
 
 /** Language, theme and search radius, out of the header: a bottom sheet opened from the header's settings button. */
 @Composable
-private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onClose: () -> Unit) {
+private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onFindGate: () -> Unit, onClose: () -> Unit) {
     val c = Phatak.c
     ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp).navigationBarsPadding()) {
@@ -439,11 +444,89 @@ private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onClose: ()
                 Triple(ThemeMode.LIGHT, t.themeLight, Icons.Rounded.LightMode), Triple(ThemeMode.DARK, t.themeDark, Icons.Rounded.DarkMode)),
                 s.theme, vm::setTheme)
             SettingTitle(t.radius, t.radiusHint)
-            Segmented(listOf(10, 15, 20).map { Triple("$it", "$it km", null) }, "${s.radiusKm}") { vm.setRadius(it.toInt()) }
+            RadiusSetting(s, t, vm, onFindGate)
             Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Phatak Live ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.weight(1f))
                 Button(onClick = onClose, shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300))) { Text(t.done) }
+            }
+        }
+    }
+}
+
+/**
+ * 10 km · 20 km · Custom. Custom opens a number field limited to [MIN_RADIUS_KM]..[MAX_RADIUS_KM]; a bigger
+ * number is refused with a yellow note pointing to Find gate, which reaches any town or station in India.
+ */
+@Composable
+private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate: () -> Unit) {
+    val isCustom = s.radiusKm !in RADIUS_PRESETS_KM
+    var customOpen by rememberSaveable { mutableStateOf(isCustom) }
+    var text by rememberSaveable { mutableStateOf(if (isCustom) "${s.radiusKm}" else "") }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val km = text.toIntOrNull()
+    val valid = km != null && km in MIN_RADIUS_KM..MAX_RADIUS_KM
+    val problem = when {
+        text.isEmpty() -> null
+        km != null && km > MAX_RADIUS_KM -> t.radiusTooBig
+        !valid -> t.radiusTooSmall
+        else -> null
+    }
+    fun apply() {
+        if (!valid) return
+        keyboard?.hide()
+        if (km != s.radiusKm) vm.setRadius(km!!)
+    }
+
+    Segmented(
+        RADIUS_PRESETS_KM.map { Triple("$it", "$it km", null) } +
+            Triple("custom", if (isCustom) "${s.radiusKm} km" else t.radiusCustom, Icons.Rounded.Tune),
+        if (customOpen) "custom" else "${s.radiusKm}",
+    ) { v ->
+        if (v == "custom") customOpen = true
+        else { customOpen = false; vm.setRadius(v.toInt()) }
+    }
+    if (!customOpen) return
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = text,
+            // digits only (Hindi / Bengali digits become 0-9); 6 digits are plenty to say "too far" without overflowing
+            onValueChange = { v -> text = v.mapNotNull { ch -> Character.digit(ch, 10).takeIf { it >= 0 }?.let { '0' + it } }.take(6).joinToString("") },
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            placeholder = { Text(t.radiusCustomHint) },
+            suffix = { Text("km") },
+            isError = problem != null,
+            shape = RoundedCornerShape(14.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { apply() }),
+        )
+        Spacer(Modifier.width(10.dp))
+        Button(onClick = { apply() }, enabled = valid && km != s.radiusKm, shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Phatak.c.amber, contentColor = Color(0xFF1A1300))) { Text(t.apply) }
+    }
+    problem?.let { msg -> RadiusWarning(msg, action = if (km != null && km > MAX_RADIUS_KM) t.tabSearch else null, onAction = onFindGate) }
+}
+
+/** Yellow note under the custom radius field. */
+@Composable
+private fun RadiusWarning(text: String, action: String?, onAction: () -> Unit) {
+    val c = Phatak.c
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(shape).background(c.amber.copy(alpha = 0.18f))
+            .border(1.dp, c.amber, shape).padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(Icons.Rounded.WarningAmber, null, tint = c.soon, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+        action?.let {
+            TextButton(onClick = onAction, modifier = Modifier.align(Alignment.End)) {
+                Icon(Icons.Rounded.Search, null, tint = c.soon, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(it, color = c.soon)
             }
         }
     }

@@ -131,6 +131,13 @@ class Strings(lang: String) {
     val radius = t("Search radius", "खोज का दायरा", "খোঁজার পরিধি")
     val radiusHint = t("How far around you to look for rail gates and stations.", "आपके आसपास कितनी दूरी तक रेल फाटक और स्टेशन खोजें।",
         "আপনার চারপাশে কত দূর পর্যন্ত রেল গেট আর স্টেশন খুঁজবে।")
+    val radiusCustom = t("Custom", "अपना", "নিজের মতো")
+    val radiusCustomHint = t("Distance, 1 to 100", "दूरी, 1 से 100", "দূরত্ব, ১ থেকে ১০০")
+    val apply = t("Apply", "लागू करें", "প্রয়োগ")
+    val radiusTooBig = t("Phatak Live can scan up to 100 km around you. For a specific town or station farther away, search it in Find gate.",
+        "Phatak Live आपके आसपास 100 km तक ही खोज सकता है। दूर के किसी खास शहर या स्टेशन के लिए उसे \"फाटक खोजें\" में खोजें।",
+        "Phatak Live আপনার চারপাশে ১০০ km পর্যন্ত খুঁজতে পারে। দূরের নির্দিষ্ট কোনো শহর বা স্টেশনের জন্য \"গেট খুঁজুন\"-এ খুঁজুন।")
+    val radiusTooSmall = t("Enter a distance from 1 to 100 km.", "1 से 100 km के बीच की दूरी लिखें।", "১ থেকে ১০০ km-এর মধ্যে দূরত্ব লিখুন।")
     val done = t("Done", "ठीक है", "ঠিক আছে")
 
     // info box
