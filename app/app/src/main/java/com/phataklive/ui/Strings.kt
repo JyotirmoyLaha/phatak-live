@@ -42,6 +42,9 @@ class Strings(lang: String) {
     val updated = t("Updated", "अपडेट", "আপডেট")
     val offline = t("You're offline: times are from the timetable and not live-verified.",
         "आप ऑफ़लाइन हैं: समय टाइमटेबल से है, लाइव जाँचा नहीं गया।", "আপনি অফলাইন: সময় টাইমটেবিল থেকে, লাইভ যাচাই নয়।")
+    val liveFailed = t("Live train times couldn't be loaded just now, so times are from the timetable. Your internet is working.",
+        "अभी लाइव ट्रेन समय नहीं मिल पाए, इसलिए समय टाइमटेबल से है। आपका इंटरनेट चल रहा है।",
+        "এখন লাইভ ট্রেনের সময় পাওয়া গেল না, তাই সময় টাইমটেবিল থেকে। আপনার ইন্টারনেট চলছে।")
     val gatesNear = t("Rail gates near you", "आपके पास के रेल फाटक", "আপনার কাছের রেল গেট")
     val searching = t("Searching…", "खोज रहे हैं…", "খোঁজা হচ্ছে…")
     val noGates = t("No rail gate found on the map in this radius. Try 20 km or search a gate by name.",
@@ -94,6 +97,14 @@ class Strings(lang: String) {
         "“$q” के लिए कोई ट्रेन नहीं मिली। 5 अंकों का ट्रेन नंबर लिखें।",
         "“$q”-এর জন্য কোনো ট্রেন পাওয়া যায়নি। ৫ অঙ্কের ট্রেন নম্বর লিখুন।")
     val language = t("Language", "भाषा", "ভাষা")
+
+    // problem report after a crash or freeze
+    val crashTitle = t("Sorry, Phatak Live stopped last time", "माफ़ करें, पिछली बार Phatak Live बंद हो गया", "দুঃখিত, গতবার Phatak Live বন্ধ হয়ে গিয়েছিল")
+    val crashBody = t("Share a short problem report so it can be fixed? It has only the app version, phone model and the error, no location.",
+        "क्या आप एक छोटी समस्या रिपोर्ट भेजेंगे ताकि इसे ठीक किया जा सके? इसमें सिर्फ़ ऐप वर्ज़न, फ़ोन मॉडल और गड़बड़ी है, लोकेशन नहीं।",
+        "সমস্যাটা ঠিক করতে একটা ছোট রিপোর্ট পাঠাবেন? এতে শুধু অ্যাপের ভার্সন, ফোনের মডেল আর ত্রুটি আছে, লোকেশন নেই।")
+    val crashShare = t("Share report", "रिपोर्ट भेजें", "রিপোর্ট পাঠান")
+    val notNow = t("Not now", "अभी नहीं", "এখন নয়")
 
     // app update
     val updateTitle = t("Software Update", "सॉफ़्टवेयर अपडेट", "সফটওয়্যার আপডেট")
@@ -149,6 +160,8 @@ class Strings(lang: String) {
     val from = t("From", "कहाँ से", "কোথা থেকে")
     val to = t("To", "कहाँ तक", "কোথায়")
     val myLocation = t("My location", "मेरी लोकेशन", "আমার লোকেশন")
+    val useMyLocation = t("Use my location", "मेरी लोकेशन इस्तेमाल करें", "আমার লোকেশন ব্যবহার করুন")
+    val change = t("Change", "बदलें", "বদলান")
     val fromHint = t("Place, gate or station", "जगह, फाटक या स्टेशन", "জায়গা, গেট বা স্টেশন")
     val toHint = t("Where to? e.g. hospital, market, town", "कहाँ जाना है? जैसे अस्पताल, बाज़ार, शहर", "কোথায় যাবেন? যেমন হাসপাতাল, বাজার, শহর")
 
@@ -179,6 +192,7 @@ class Strings(lang: String) {
         "পৌঁছালে সম্ভবত বন্ধ পাবেন: ~${mins(m)} অপেক্ষা, ~$time-এ খুলবে")
     fun closedShort(m: Int) = t("likely closed, wait ~${mins(m)}", "संभवतः बंद, ~${mins(m)} इंतज़ार", "সম্ভবত বন্ধ, ~${mins(m)} অপেক্ষা")
     fun crossingNear(st: String) = t("Rail crossing near $st", "$st के पास रेल क्रॉसिंग", "$st-এর কাছে রেল ক্রসিং")
+    fun via(road: String) = t("via $road", "$road से", "$road দিয়ে")
     val railCrossing = t("Rail crossing", "रेल क्रॉसिंग", "রেল ক্রসিং")
     val navStopNote = t("Google Maps will show a stop just after this crossing. Don't stop there, just keep going.",
         "Google Maps इस क्रॉसिंग के ठीक बाद एक स्टॉप दिखाएगा। वहाँ रुकना नहीं है, बस चलते रहें।",

@@ -33,3 +33,6 @@ Thumbs.db
 # screenshots / local test captures
 *.png
 !app/app/src/**/*.png
+
+# R8 mapping files per release, to decode problem reports (kept local)
+release-mappings/

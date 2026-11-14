@@ -48,6 +48,7 @@ object GoogleDirections {
             "&travelmode=${mode.urlMode}&dir_action=navigate")
 
     private fun get(url: String): String {
+        GoogleMaps.requireBackground()
         val req = Request.Builder().url(url)
             .header("User-Agent", DESKTOP_UA)
             .header("Accept-Language", "en-IN,en;q=0.9")

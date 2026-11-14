@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        CrashReport.install(this)
         // once per launch: drop any old downloaded update, then look for a newer release on GitHub
         if (intent?.getBooleanExtra(TripService.EXTRA_OPEN_ROUTE, false) == true) vm.requestOpenRoute()
         if (savedInstanceState == null) lifecycleScope.launch {

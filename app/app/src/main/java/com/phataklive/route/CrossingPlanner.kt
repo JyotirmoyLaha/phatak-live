@@ -42,6 +42,8 @@ data class Later(val crossing: Crossing, val toSec: Int)
 data class Leg(
     val crossing: Crossing, val toCrossingSec: Int, val viaSec: Int, val viaM: Int, val navStop: LatLng?,
     val line: List<LatLng>, val later: List<Later>,
+    /** Google's name for the roads of this way ("NH114 and Shibda Rd"), to tell ways apart */
+    val road: String? = null,
 ) {
     val own: Boolean get() = navStop == null
     /** every crossing on this way, in order */
@@ -130,6 +132,10 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         private const val NO_GATE_KM = 0.3
         /** a start closer than this to a railway line is on it (a gate, a station): which side is unknown */
         private const val ON_RAILWAY_KM = 0.06
+        /** crossings this close are one crossing area: only one way through it is shown */
+        private const val SAME_AREA_KM = 0.5
+        /** crossings with the same name closer than this: only the faster way is shown */
+        private const val SAME_NAME_KM = 3.0
         /** a crossing this close to the start is where you are */
         private const val AT_KM = 0.03
         /** longest trip the crossing check covers */
@@ -227,7 +233,10 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         val d = to.pos
         if (Geo.km(from.pos, d) > MAX_TRIP_KM) throw TooFar()
         val sem = Semaphore(PARALLEL)
-        suspend fun <T> google(block: () -> T): T? = sem.withPermit { runCatching { block() }.getOrNull() }
+        // every Google call runs on the IO threads, whoever calls it: never on the screen thread
+        suspend fun <T> google(block: () -> T): T? = withContext(Dispatchers.IO) {
+            sem.withPermit { runCatching { block() }.onFailure { android.util.Log.w("PhatakLive", "route: Google call failed", it) }.getOrNull() }
+        }
 
         // 1. Google's own route, then the railway lines near it
         onStep(Step.CROSSINGS)
@@ -341,9 +350,20 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
                     else -> google { GoogleDirections.routes(listOf(o, Lines.pointAt(r.line, h.atKm - 0.02)), mode).firstOrNull()?.durationSec } ?: share(h.atKm)
                 }
                 Leg(c, toSec.coerceIn(0, r.durationSec), r.durationSec, r.distanceM, w.stop, r.line,
-                    w.hits.drop(1).map { Later(crossingAt(it.pos), share(it.atKm)) })
+                    w.hits.drop(1).map { Later(crossingAt(it.pos), share(it.atKm)) }, r.summary?.takeIf { it.isNotBlank() })
             }
         }.awaitAll()
+            // one crossing area, one way: crossings closer than SAME_AREA_KM (two tracks, two roads at the same spot)
+            // would show twice under the same name; Google's own way first, then the fastest, are kept
+            .sortedWith(compareBy({ if (it.own) 0 else 1 }, { it.viaSec }))
+            .fold(ArrayList<Leg>()) { kept, l ->
+                // also: two ways under the same name nearby ("Rail crossing near X" twice) confuse more than they help
+                if (kept.none {
+                        Geo.km(it.crossing.pos, l.crossing.pos) < SAME_AREA_KM ||
+                            (it.crossing.name == l.crossing.name && it.crossing.named == l.crossing.named && Geo.km(it.crossing.pos, l.crossing.pos) < SAME_NAME_KM)
+                    }) kept += l
+                kept
+            }
 
         // 4. live trains at the stations next to the gates
         onStep(Step.TRAINS)

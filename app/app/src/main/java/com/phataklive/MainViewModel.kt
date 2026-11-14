@@ -6,6 +6,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
@@ -29,6 +30,8 @@ import com.phataklive.route.Trip
 import com.phataklive.search.LiveSearch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +45,9 @@ import java.util.Locale
 import kotlin.coroutines.resume
 
 enum class LocationAccess { UNKNOWN, GRANTED, DENIED, BLOCKED }
+
+/** Log tag: `adb logcat -s PhatakLive` shows why an online call failed. */
+const val TAG = "PhatakLive"
 
 /** Preset search radii in Settings; any other value in range is a custom radius. */
 val RADIUS_PRESETS_KM = listOf(10, 20)
@@ -83,6 +89,8 @@ data class UiState(
     val loading: Boolean = false,
     val lastRefreshSec: Long? = null,
     val offline: Boolean = false,
+    /** online, but live train times couldn't be loaded (Google busy or refusing): times are from the timetable */
+    val liveFailed: Boolean = false,
     // gate search
     val gateQuery: String = "",
     val gateSearching: Boolean = false,
@@ -108,6 +116,8 @@ data class UiState(
     val routeProblem: Problem? = null,
     /** a trip notification was tapped: show the Route tab (one-shot) */
     val openRoute: Boolean = false,
+    /** last run crashed or froze: a report the user may share */
+    val crashReport: String? = null,
     /** the one-time Route safety notice was accepted */
     val routeNoticeAccepted: Boolean = false,
 )
@@ -146,6 +156,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun defaultLang() = when (Locale.getDefault().language) { "hi" -> "Hindi"; "bn" -> "Bengali"; else -> "English" }
 
     init {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { CrashReport.pending(getApplication()) }.getOrNull() }
+            if (r != null) _state.update { it.copy(crashReport = r) }
+        }
         // gate states tick every 20 s (no network); online data refreshes every 3 min while the app is open
         viewModelScope.launch {
             while (isActive) {
@@ -218,6 +232,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return fresh ?: lm.getLastKnownLocation(provider) ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
     }
 
+    /** The phone has a working internet connection (Android has checked it), not just Wi-Fi or mobile data switched on. */
+    private fun hasInternet(): Boolean {
+        val cm = getApplication<Application>().getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
     private fun locationEnabled(): Boolean =
         LocationManagerCompat.isLocationEnabled(getApplication<Application>().getSystemService(LocationManager::class.java))
 
@@ -258,7 +280,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             gates = res.gates.filter { Geo.km(user, it.pos) <= radius }
             live = res.live
             liveErrors = res.errors
-            _state.update { it.copy(offline = res.live.isEmpty() && res.errors.isNotEmpty(), lastRefreshSec = now()) }
+            // "offline" only when the phone really has no internet; Google failing while online is a different message
+            val liveFailed = res.live.isEmpty() && res.errors.isNotEmpty()
+            if (liveFailed) Log.w(TAG, "live trains failed: ${res.errors}")
+            val noNet = liveFailed && !hasInternet()
+            _state.update { it.copy(offline = noNet, liveFailed = liveFailed && !noNet, lastRefreshSec = now()) }
             recompute()
             _state.update { it.copy(loading = false) }
         }
@@ -378,11 +404,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (p.lat in 6.0..37.5 && p.lng in 68.0..98.0) return@withContext listOf(Place(q.trim(), null, p))
         }
         val near = _state.value.user ?: INDIA_CENTRE
-        val maps = runCatching { GoogleMaps.searchPlaces(q, near, null) }.getOrDefault(emptyList()).take(5)
-            .map { Place(it.name, it.address, it.pos) }
+        // Google Maps' own autocomplete (half-typed words), Google Maps search (whole words, local shops) and stations
+        val (auto, maps) = coroutineScope {
+            val a = async { runCatching { GoogleMaps.autocomplete(q, near) }.onFailure { Log.w(TAG, "autocomplete '$q'", it) }.getOrDefault(emptyList()) }
+            val m = async { runCatching { GoogleMaps.searchPlaces(q, near, null) }.onFailure { Log.w(TAG, "search '$q'", it) }.getOrDefault(emptyList()) }
+            a.await() to m.await().take(6)
+        }
         val stations = runCatching { db.findStations(Fuzzy.placePart(q).ifBlank { q }, 2) }.getOrDefault(emptyList())
             .map { Place("${it.name} (${it.code})", null, it.pos) }
-        (maps + stations).distinctBy { "${it.name.lowercase()}|${(it.pos.lat * 500).toInt()}|${(it.pos.lng * 500).toInt()}" }.take(6)
+        val all = (auto + maps).map { Place(it.name, it.address, it.pos) } + stations
+        // the same name within 3 km is the same place listed twice (Google often has two entries)
+        all.fold(ArrayList<Place>()) { kept, p ->
+            if (kept.none { it.name.equals(p.name, ignoreCase = true) && Geo.km(it.pos, p.pos) < 3.0 }) kept += p
+            kept
+        }
+            // places within 40 km first (people mostly go somewhere near), each group in Google's order
+            .sortedBy { if (Geo.km(near, it.pos) <= 40.0) 0 else 1 }
+            .take(7)
     }
 
     /** Suggestions under a place box while the user types (after a short pause). */
@@ -468,7 +506,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         routeJob = viewModelScope.launch {
             _state.update { it.copy(routeStep = CrossingPlanner.Step.CROSSINGS, routeProblem = null, routePlan = null, routeOptions = emptyList()) }
             val plan = try {
-                planner.plan(from, s.routeFrom == null, to, s.routeMode, live, s.user) { step -> _state.update { it.copy(routeStep = step) } }
+                // the whole plan (Google calls and line geometry) off the screen thread
+                withContext(Dispatchers.Default) {
+                    planner.plan(from, s.routeFrom == null, to, s.routeMode, live, s.user) { step -> _state.update { it.copy(routeStep = step) } }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: CrossingPlanner.TooFar) {
@@ -501,6 +542,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun acceptRouteNotice() {
         prefs.edit().putBoolean("route_notice_ok", true).apply()
         _state.update { it.copy(routeNoticeAccepted = true) }
+    }
+
+    /** The crash report was shared or dismissed: don't offer it again. */
+    fun crashReportDone() {
+        CrashReport.clear(getApplication())
+        _state.update { it.copy(crashReport = null) }
     }
 
     fun requestOpenRoute() = _state.update { it.copy(openRoute = true) }

@@ -25,7 +25,17 @@ object GoogleMaps {
 
     data class Place(val name: String, val pos: LatLng, val categories: List<String>, val placeId: String?, val address: String?)
 
+    /**
+     * Network calls must never run on the screen thread: that freezes the app (Android shows "not responding").
+     * A mistake fails at once here instead of freezing. (In plain JVM unit tests there is no Looper: nothing to check.)
+     */
+    internal fun requireBackground() {
+        val main = runCatching { android.os.Looper.getMainLooper() }.getOrNull() ?: return
+        check(!main.isCurrentThread) { "network call on the screen thread" }
+    }
+
     private fun fetch(query: String, near: LatLng?, spanMeters: Int): JSONArray {
+        requireBackground()
         val q = URLEncoder.encode(query, "UTF-8")
         val pb = if (near != null)
             "&pb=!4m12!1m3!1d$spanMeters!2d${near.lng}!3d${near.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!7i20!10b1"
@@ -64,6 +74,46 @@ object GoogleMaps {
         val list = data.at(0, 1) as? JSONArray
         val found = (0 until (list?.length() ?: 0)).mapNotNull { place(list!!.at(it, 14) as? JSONArray) }
         return found.ifEmpty { listOfNotNull(place(data.at(6) as? JSONArray)) }
+    }
+
+    /**
+     * Places for what is typed so far, from the autocomplete of the Google Maps search box (google.com/s?tbm=map&suggest=p):
+     * built for half-typed words ("bard" -> Bardhaman). Only real places (with a position) are kept; search phrases
+     * people typed ("gonna kotar somoy lagbe") are not places and are dropped. Biased to [near].
+     */
+    fun autocomplete(query: String, near: LatLng): List<Place> {
+        requireBackground()
+        val q = URLEncoder.encode(query, "UTF-8")
+        val pb = "!2i1!4m12!1m3!1d20000!2d${near.lng}!3d${near.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!7i20!10b1"
+        val req = Request.Builder()
+            .url("https://www.google.com/s?tbm=map&suggest=p&gs_ri=maps&hl=en&gl=in&authuser=0&q=$q&pb=$pb")
+            .header("User-Agent", UA)
+            .header("Accept-Language", "en-IN,en;q=0.9")
+            .build()
+        val body = http.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw java.io.IOException("Google Maps HTTP ${r.code}")
+            r.body!!.string()
+        }
+        return parseAutocomplete(body)
+    }
+
+    internal fun parseAutocomplete(body: String): List<Place> {
+        val json = JSONArray((if (body.startsWith(")]}'")) body.substring(4) else body).trim())
+        val list = json.at(0, 1) as? JSONArray ?: return emptyList()
+        fun findPos(n: Any?): LatLng? {
+            val a = n as? JSONArray ?: return null
+            if (a.length() == 4 && a.isNull(0) && a.opt(2) is Number && a.opt(3) is Number) return LatLng(a.getDouble(2), a.getDouble(3))
+            for (i in 0 until a.length()) findPos(a.opt(i))?.let { return it }
+            return null
+        }
+        return (0 until list.length()).mapNotNull { i ->
+            val s = list.optJSONArray(i)?.optJSONArray(22) ?: return@mapNotNull null
+            val text = s.at(0, 0) as? String ?: return@mapNotNull null
+            val pos = findPos(s) ?: return@mapNotNull null
+            // "Bardhaman Bus Stand, Goda P, West Bengal": the name, then where it is
+            val name = text.substringBefore(", ").trim()
+            Place(name, pos, emptyList(), null, text.substringAfter(", ", "").ifBlank { null })
+        }
     }
 
     private val gateWords = Regex(

@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
@@ -55,6 +57,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -73,6 +76,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -142,7 +147,13 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     // what is typed in the two boxes; a picked place fills its box
     var fromText by rememberSaveable { mutableStateOf(s.routeFrom?.name ?: "") }
     var toText by rememberSaveable { mutableStateOf(s.routeTo?.name ?: "") }
-    LaunchedEffect(s.routeFrom) { s.routeFrom?.let { fromText = it.name } }
+    // the start is the phone's own location until the user picks or types another place
+    var fromIsMe by rememberSaveable { mutableStateOf(s.routeFrom == null) }
+    LaunchedEffect(s.routeFrom) { s.routeFrom?.let { fromText = it.name; fromIsMe = false } }
+    val fromFocus = remember { FocusRequester() }
+    var focusFrom by remember { mutableStateOf(false) }
+    LaunchedEffect(focusFrom) { if (focusFrom) { runCatching { fromFocus.requestFocus() }; focusFrom = false } }
+    fun useMyLocation() { fromIsMe = true; fromText = ""; focus.clearFocus(); vm.pickRoutePlace(RouteField.FROM, null) }
     LaunchedEffect(s.routeTo) { s.routeTo?.let { toText = it.name } }
     var pending by remember { mutableStateOf<Crossing?>(null) }
 
@@ -177,13 +188,21 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
             return@LazyColumn
         }
         item {
-            val mine = listOfNotNull(t.myLocation, s.address?.takeIf { it.isNotBlank() }).joinToString(" · ")
-            PlaceBox(fromText, t.from, mine, if (s.routeFrom == null) Icons.Rounded.MyLocation else Icons.Rounded.Place,
-                onType = { fromText = it; vm.onRouteTyping(RouteField.FROM, it) },
-                onSubmit = { focus.clearFocus(); vm.submitRoutePlace(RouteField.FROM, it) },
-                onClear = { fromText = ""; vm.pickRoutePlace(RouteField.FROM, null) })
-            if (s.routeSuggestFor == RouteField.FROM && s.routeSuggest.isNotEmpty())
-                PlaceSuggestions(s.routeSuggest, s) { focus.clearFocus(); vm.pickRoutePlace(RouteField.FROM, it) }
+            if (fromIsMe) {
+                // the usual start: plainly "My location", with Change to type another place
+                MyLocationBox(t, s.address) { fromIsMe = false; focusFrom = true }
+            } else {
+                PlaceBox(fromText, t.from, t.fromHint, Icons.Rounded.Place,
+                    onType = { fromText = it; vm.onRouteTyping(RouteField.FROM, it) },
+                    onSubmit = { focus.clearFocus(); vm.submitRoutePlace(RouteField.FROM, it) },
+                    onClear = { fromText = "" },
+                    modifier = Modifier.focusRequester(fromFocus),
+                    // one tap back to the phone's own location
+                    extra = { IconButton(onClick = { useMyLocation() }) { Icon(Icons.Rounded.MyLocation, t.useMyLocation, tint = MaterialTheme.colorScheme.primary) } })
+                Suggestion(Icons.Rounded.MyLocation, t.useMyLocation, s.address) { useMyLocation() }
+                if (s.routeSuggestFor == RouteField.FROM && s.routeSuggest.isNotEmpty())
+                    PlaceSuggestions(s.routeSuggest, s) { focus.clearFocus(); vm.pickRoutePlace(RouteField.FROM, it) }
+            }
         }
         item {
             PlaceBox(toText, t.to, t.toHint, Icons.Rounded.Flag,
@@ -197,7 +216,7 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
         item {
             val busy = s.routeStep != null
             Button(
-                onClick = { focus.clearFocus(); vm.findBest(fromText, toText) }, enabled = (s.routeTo != null || toText.isNotBlank()) && !busy,
+                onClick = { focus.clearFocus(); vm.findBest(if (fromIsMe) "" else fromText, toText) }, enabled = (s.routeTo != null || toText.isNotBlank()) && !busy,
                 modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300)),
             ) {
@@ -238,10 +257,11 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
 
     val shown = mapCrossing
     val shownLeg = plan?.legs?.firstOrNull { it.crossing == shown }
+    val navBar = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     if (shown != null && plan != null && shownLeg != null) {
         val o = options.firstOrNull { it.leg.crossing == shown }
         RouteMapDialog(
-            plan = plan, leg = shownLeg, option = o, t = t,
+            plan = plan, leg = shownLeg, option = o, t = t, bottomInset = navBar,
             onNavigate = { mapCrossing = null; navigate(shown) },
             onClose = { mapCrossing = null },
         ) { if (o != null) { StatusLine(o, t); LaterLines(o, t) } }
@@ -294,18 +314,57 @@ private fun LaterLines(o: Option, t: Strings) {
 
 // ------------------------------------------------------------------ inputs
 
+/** The start when it is the phone's location: a plain row, "My location · place", and Change. */
+@Composable
+private fun MyLocationBox(t: Strings, address: String?, onChange: () -> Unit) {
+    val c = Phatak.c
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp).glass(RoundedCornerShape(18.dp), strong = true)
+            .clickable(onClick = onChange).padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.MyLocation, null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(t.from, style = MaterialTheme.typography.labelSmall, color = c.muted)
+            Text(listOfNotNull(t.myLocation, address?.takeIf { it.isNotBlank() }).joinToString(" · "),
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        TextButton(onClick = onChange) { Text(t.change) }
+    }
+}
+
+/** One tappable row like a suggestion (used for "Use my location"). */
+@Composable
+private fun Suggestion(icon: ImageVector, title: String, sub: String?, onClick: () -> Unit) {
+    val c = Phatak.c
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp).glass(RoundedCornerShape(18.dp), strong = true).clickable(onClick = onClick)
+        .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            sub?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+}
+
 @Composable
 private fun PlaceBox(
     q: String, label: String, hint: String, icon: ImageVector,
     onType: (String) -> Unit, onSubmit: (String) -> Unit, onClear: () -> Unit,
+    modifier: Modifier = Modifier, extra: (@Composable () -> Unit)? = null,
 ) {
     OutlinedTextField(
-        value = q, modifier = Modifier.fillMaxWidth().padding(top = 4.dp), singleLine = true,
+        value = q, modifier = modifier.fillMaxWidth().padding(top = 4.dp), singleLine = true,
         onValueChange = { onType(it); if (it.isBlank()) onClear() },
         label = { Text(label) }, placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         shape = RoundedCornerShape(18.dp),
         leadingIcon = { Icon(icon, null) },
-        trailingIcon = { if (q.isNotEmpty()) IconButton(onClick = onClear) { Icon(Icons.Rounded.Close, null) } },
+        trailingIcon = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (q.isNotEmpty()) IconButton(onClick = onClear) { Icon(Icons.Rounded.Close, null) }
+                extra?.invoke()
+            }
+        },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { if (q.isNotBlank()) onSubmit(q) }),
         colors = OutlinedTextFieldDefaults.colors(
@@ -412,7 +471,9 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(cr.label(t), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(kindLabel(cr.kind, t), style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    // "Rail gate · via NH114 and Shibda Rd": the road tells two ways apart
+                    Text(listOfNotNull(kindLabel(cr.kind, t), o.leg.road?.let { t.via(it) }).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 if (best) Text(t.best, color = Color(0xFF1A1300), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black,
                     modifier = Modifier.clip(RoundedCornerShape(50)).background(c.amber).padding(horizontal = 10.dp, vertical = 4.dp))

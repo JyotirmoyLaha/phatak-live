@@ -234,6 +234,28 @@ fun MainScreen(
     }
     if (showSettings) SettingsSheet(s, t, vm, onFindGate = { showSettings = false; tab = 1 }) { showSettings = false }
     AppUpdate(t)
+    s.crashReport?.let { report -> CrashDialog(report, t, vm::crashReportDone) }
+}
+
+/** Last run crashed or froze: offer to share the report (Android's share sheet; nothing is sent by itself). */
+@Composable
+private fun CrashDialog(report: String, t: Strings, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text(t.crashTitle) },
+        text = { Text(t.crashBody) },
+        confirmButton = {
+            Button(onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "Phatak Live problem report")
+                    .putExtra(Intent.EXTRA_TEXT, report)
+                runCatching { ctx.startActivity(Intent.createChooser(send, t.crashShare)) }
+                onDone()
+            }) { Text(t.crashShare) }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text(t.notNow) } },
+    )
 }
 
 /** List padding that keeps the last card clear of the floating bottom bar. */
@@ -639,6 +661,7 @@ private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocati
         }
         if (s.gpsOff) item { Banner(Icons.Rounded.LocationOff, t.gpsOff, t.gpsOffBody, t.turnOn, onOpenLocationSettings) }
         if (s.offline) item { Banner(Icons.Rounded.CloudOff, null, t.offline, null, null) }
+        else if (s.liveFailed) item { Banner(Icons.Rounded.CloudOff, null, t.liveFailed, t.tryAgain) { vm.refresh() } }
         item { SectionTitle(t.gatesNear, if (s.loading) t.searching else "${s.gates.size} · ${s.radiusKm} km") }
         when {
             s.loading && s.gates.isEmpty() -> items(2) { Skeleton(150.dp) }
