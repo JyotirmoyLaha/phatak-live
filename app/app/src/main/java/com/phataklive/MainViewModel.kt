@@ -67,6 +67,7 @@ data class UiState(
     val gateResults: List<GateStatus>? = null,
     val gateProblem: Problem? = null,
     // train search
+    val trainQuery: String = "",
     val trainSearching: Boolean = false,
     val train: LiveSearch.TrainStatus? = null,
     val trainProblem: Problem? = null,
@@ -258,7 +259,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (query.isBlank()) return
         trainJob?.cancel()
         trainJob = viewModelScope.launch {
-            _state.update { it.copy(trainSearching = true, train = null, trainProblem = null) }
+            _state.update { it.copy(trainQuery = query.trim(), trainSearching = true, train = null, trainProblem = null) }
             val r = search.trainStatus(query.trim())
             _state.update {
                 if (r == null) it.copy(trainSearching = false, trainProblem = Problem.NoTrainFound(query.trim()))
@@ -269,6 +270,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearTrain() {
         trainJob?.cancel()
-        _state.update { it.copy(train = null, trainProblem = null, trainSearching = false) }
+        _state.update { it.copy(trainQuery = "", train = null, trainProblem = null, trainSearching = false) }
     }
 }

@@ -79,6 +79,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -151,10 +152,30 @@ fun MainScreen(
         Column(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
             Header(s, t, onRefresh = vm::refresh, onRadius = vm::setRadius, onLang = vm::setLang)
             AnimatedContent(targetState = tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(150)) }, label = "tab") { which ->
-                when (which) {
-                    0 -> NearbyTab(s, t, vm, onRequestLocation, onOpenLocationSettings)
-                    1 -> GateSearchTab(s, t, vm)
-                    else -> TrainTab(s, t, vm)
+                // pull down to refresh: search tabs repeat their last search, otherwise the nearby scan runs again
+                val repeatGate = which == 1 && s.gateQuery.isNotBlank()
+                val repeatTrain = which == 2 && s.trainQuery.isNotBlank()
+                val refreshing = when {
+                    repeatGate -> s.gateSearching
+                    repeatTrain -> s.trainSearching
+                    else -> s.loading
+                }
+                PullToRefreshBox(
+                    isRefreshing = refreshing,
+                    onRefresh = {
+                        when {
+                            repeatGate -> vm.searchGate(s.gateQuery)
+                            repeatTrain -> vm.searchTrain(s.trainQuery)
+                            else -> vm.refresh()
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    when (which) {
+                        0 -> NearbyTab(s, t, vm, onRequestLocation, onOpenLocationSettings)
+                        1 -> GateSearchTab(s, t, vm)
+                        else -> TrainTab(s, t, vm)
+                    }
                 }
             }
         }
@@ -378,7 +399,7 @@ private fun nowSec(): Long {
 @Composable
 private fun NearbyTab(s: UiState, t: Strings, vm: MainViewModel, onRequestLocation: () -> Unit, onOpenLocationSettings: () -> Unit) {
     val now = nowSec()
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (s.access != LocationAccess.GRANTED) item {
             Banner(Icons.Rounded.LocationOff, t.deniedTitle, t.deniedBody, t.allowLocation, onRequestLocation)
         }
@@ -706,7 +727,7 @@ private fun SearchField(id: String, hint: String, busy: Boolean, initial: String
 @Composable
 private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
     val now = nowSec()
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(t.searchGateTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.searchGateSub, style = MaterialTheme.typography.bodyMedium, color = Phatak.c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
@@ -724,7 +745,7 @@ private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
 @Composable
 private fun TrainTab(s: UiState, t: Strings, vm: MainViewModel) {
     val c = Phatak.c
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(t.trainTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.trainSub, style = MaterialTheme.typography.bodyMedium, color = c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
