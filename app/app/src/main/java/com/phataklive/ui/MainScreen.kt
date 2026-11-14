@@ -98,6 +98,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import com.phataklive.BuildConfig
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
@@ -441,7 +444,9 @@ private fun Header(s: UiState, t: Strings, onRefresh: () -> Unit, onSettings: ()
 @Composable
 private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onFindGate: () -> Unit, onClose: () -> Unit) {
     val c = Phatak.c
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    // always fully open (no half-height stop), so when the keyboard comes up the whole sheet rides above it by itself
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface) {
         // the sheet stops above the keyboard and scrolls, so the custom radius field and its note stay visible while typing
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
             .padding(start = 20.dp, end = 20.dp, bottom = 24.dp).navigationBarsPadding()) {
@@ -454,7 +459,7 @@ private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
                 Triple(ThemeMode.LIGHT, t.themeLight, Icons.Rounded.LightMode), Triple(ThemeMode.DARK, t.themeDark, Icons.Rounded.DarkMode)),
                 s.theme, vm::setTheme)
             SettingTitle(t.radius, t.radiusHint)
-            RadiusSetting(s, t, vm, onFindGate)
+            RadiusSetting(s, t, vm, sheet, onFindGate)
             Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Phatak Live ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.weight(1f))
                 Button(onClick = onClose, shape = RoundedCornerShape(14.dp),
@@ -469,7 +474,7 @@ private fun SettingsSheet(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
  * number is refused with a yellow note pointing to Find gate, which reaches any town or station in India.
  */
 @Composable
-private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate: () -> Unit) {
+private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, sheet: SheetState, onFindGate: () -> Unit) {
     val isCustom = s.radiusKm !in RADIUS_PRESETS_KM
     var customOpen by rememberSaveable { mutableStateOf(isCustom) }
     var text by rememberSaveable { mutableStateOf(if (isCustom) "${s.radiusKm}" else "") }
@@ -501,7 +506,11 @@ private fun RadiusSetting(s: UiState, t: Strings, vm: MainViewModel, onFindGate:
     }
     if (!customOpen) return
     LaunchedEffect(focused, imeVisible, problem) {
-        if (focused) { delay(250); bring.bringIntoView() }   // after the keyboard has slid in
+        if (!focused) return@LaunchedEffect
+        if (sheet.currentValue != SheetValue.Expanded) sheet.expand()   // lift the sheet without a manual drag
+        delay(300)   // let the keyboard finish sliding in, then scroll the field and its note into view
+        if (sheet.currentValue != SheetValue.Expanded) sheet.expand()
+        bring.bringIntoView()
     }
     Column(Modifier.bringIntoViewRequester(bring)) {
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
