@@ -88,6 +88,7 @@ import com.phataklive.gate.GateEngine
 import com.phataklive.net.GoogleDirections
 import com.phataklive.route.AtArrival
 import com.phataklive.route.Crossing
+import com.phataklive.route.Leg
 import com.phataklive.route.CrossingKind
 import com.phataklive.route.CrossingPlanner
 import com.phataklive.route.Option
@@ -99,9 +100,19 @@ import com.phataklive.route.Trip
 private fun roundMin(sec: Int) = (sec + 30) / 60
 private fun waitMin(sec: Int) = (sec + 59) / 60
 
-/** Opens turn-by-turn in the Google Maps app (or any app that handles the link) through the crossing. */
-private fun openNavigation(ctx: Context, plan: Plan, crossing: Crossing) {
-    val uri = GoogleDirections.navigationUri(if (plan.fromIsMe) null else plan.from.pos, crossing.pos, plan.to.pos, plan.mode)
+/** A crossing's name for people: its name on the map, or "Rail crossing near <station>". */
+fun Crossing.label(t: Strings): String = when {
+    named -> name
+    name.isNotEmpty() -> t.crossingNear(name)
+    else -> t.railCrossing
+}
+
+/**
+ * Opens turn-by-turn in the Google Maps app (or any app that handles the link): Google's own route with no stop, or
+ * with the stop just past the chosen crossing that the plan checked, so Maps drives exactly the way the app showed.
+ */
+private fun openNavigation(ctx: Context, plan: Plan, leg: Leg) {
+    val uri = GoogleDirections.navigationUri(if (plan.fromIsMe) null else plan.from.pos, leg.navStop, plan.to.pos, plan.mode)
     try {
         ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.google.android.apps.maps"))
     } catch (e: ActivityNotFoundException) {
@@ -127,6 +138,7 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     val tripOfPlan = trip?.takeIf { plan != null && it.plan.createdSec == plan.createdSec }
     val options = tripOfPlan?.options?.takeIf { it.isNotEmpty() } ?: s.routeOptions
     var mapCrossing by remember { mutableStateOf<Crossing?>(null) }
+    // a few ways only: the best, and one or two others
     // what is typed in the two boxes; a picked place (or "I'm at" gate) fills its box
     var fromText by rememberSaveable { mutableStateOf(s.routeFrom?.name ?: "") }
     var toText by rememberSaveable { mutableStateOf(s.routeTo?.name ?: "") }
@@ -136,8 +148,9 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
 
     fun go(crossing: Crossing) {
         val p = s.routePlan ?: return
+        val leg = p.legs.firstOrNull { it.crossing == crossing } ?: return
         Trip.start(ctx, p, crossing, options)
-        openNavigation(ctx, p, crossing)
+        openNavigation(ctx, p, leg)
     }
     // Android 13+: notifications need permission; asked once, when the first trip starts
     val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -214,17 +227,17 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
             }
         }
         trip?.let { tr ->
-            item { Banner(Icons.Rounded.NotificationsActive, t.tripOn(tr.crossing.name), t.tripOnSub, t.stopAlerts) { Trip.stop(ctx) } }
+            item { Banner(Icons.Rounded.NotificationsActive, t.tripOn(tr.crossing.label(t)), t.tripOnSub, t.stopAlerts) { Trip.stop(ctx) } }
         }
         s.routeProblem?.let { item { EmptyNote(problemText(it, t)) } }
         if (s.routeStep != null) items(3) { Skeleton(150.dp) }
         if (plan != null && s.routeStep == null) {
-            items(options, key = { "r" + it.leg.crossing.pos + it.leg.crossing.name }) { o ->
+            if (plan.sameSide) item { EmptyNote(t.sameSide) }
+            items(options.take(3), key = { "r" + it.leg.crossing.pos }) { o ->
                 OptionCard(o, best = o === options.first(), t = t,
                     tripOn = tripOfPlan?.crossing == o.leg.crossing,
                     onNavigate = { navigate(o.leg.crossing) }, onMap = { mapCrossing = o.leg.crossing })
             }
-            if (CrossingPlanner.directMuchFaster(plan)) plan.directSec?.let { ds -> item { EmptyNote(t.directFaster(roundMin(ds))) } }
             if (options.isNotEmpty()) item {
                 Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.Top) {
                     Icon(Icons.Rounded.WarningAmber, null, tint = c.muted, modifier = Modifier.size(18.dp))
@@ -238,9 +251,10 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     val shown = mapCrossing
     if (shown != null && plan != null) {
         val o = options.firstOrNull { it.leg.crossing == shown }
+        val stop = plan.legs.firstOrNull { it.crossing == shown }?.navStop
         RouteMapDialog(
-            url = GoogleDirections.webUrl(listOf(plan.from.pos, shown.pos, plan.to.pos), plan.mode),
-            title = shown.name, t = t,
+            url = GoogleDirections.webUrl(listOfNotNull(plan.from.pos, stop, plan.to.pos), plan.mode),
+            title = shown.label(t), t = t,
             onNavigate = { mapCrossing = null; navigate(shown) },
             onClose = { mapCrossing = null },
         ) { if (o != null) StatusLine(o, t) }
@@ -366,7 +380,7 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(cr.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(cr.label(t), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(kindLabel(cr.kind, t), style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
                 if (best) Text(t.best, color = Color(0xFF1A1300), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black,
@@ -386,6 +400,8 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                 }
             }
             if (o.at == AtArrival.CLOSED) o.trains.take(2).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
+            // Google Maps shows our stop just past the crossing as a stop: say so, so nobody pulls over there
+            if (o.leg.navStop != null) Text(t.navStopNote, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onNavigate, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = c.amber, contentColor = Color(0xFF1A1300))) {

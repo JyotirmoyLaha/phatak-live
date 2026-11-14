@@ -17,19 +17,27 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlin.math.abs
+import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
+import kotlin.math.min
 
 enum class CrossingKind { GATE, OVERBRIDGE, UNDERPASS, FOOTBRIDGE }
 
-/** A place where the road crosses the railway: a gate (can be closed for a train) or a bridge / underpass (never). */
-data class Crossing(val kind: CrossingKind, val name: String, val pos: LatLng, val placeId: String?)
+/**
+ * A place where a road crosses the railway, found from Google's road and rail lines (not from names).
+ * [named]: [name] is the place's own name on Google Maps; otherwise [name] is the nearest station ("crossing near …").
+ */
+data class Crossing(val kind: CrossingKind, val name: String, val named: Boolean, val pos: LatLng)
 
 /**
- * A crossing's roads from Google Maps, as they were when the trip was planned: [viaSec] / [viaM] for the whole trip
- * through it, [toCrossingSec] from the start to the crossing (asked for gates, whose wait depends on the arrival time).
+ * One way across: Google's route for the whole trip through [crossing] ([viaSec] / [viaM]), and the time from the start
+ * to the crossing ([toCrossingSec]). [navStop]: the stop Navigate passes to Google Maps to go this way (just past the
+ * crossing); null when this is Google's own route, which needs no stop. The times are Google's for exactly that link.
  */
-data class Leg(val crossing: Crossing, val toCrossingSec: Int?, val viaSec: Int, val viaM: Int)
+data class Leg(val crossing: Crossing, val toCrossingSec: Int, val viaSec: Int, val viaM: Int, val navStop: LatLng?) {
+    val own: Boolean get() = navStop == null
+}
 
 data class Place(val name: String, val sub: String?, val pos: LatLng)
 
@@ -40,9 +48,8 @@ data class Plan(
     val to: Place,
     val mode: Mode,
     val legs: List<Leg>,
-    /** Google's own fastest route, which may go through any of the legs or none */
-    val directSec: Int?,
-    val directM: Int?,
+    /** Google's road does not cross the railway at all: start and destination are on the same side */
+    val sameSide: Boolean,
     val liveStations: List<Station>,
     val live: Map<String, GateEngine.LiveBoard>,
     val liveFetchedSec: Long,
@@ -66,24 +73,37 @@ data class Option(
     val trains: List<GatePass>,
     /** the train times behind this answer are confirmed live (bridges: always true) */
     val live: Boolean,
-    /** this is probably the road Google itself picks */
+    /** this is the road Google Maps takes by itself */
     val googleWay: Boolean,
 )
 
 /**
- * Best way across the railway between two places. Crossings come from Google Maps (gates, overbridges, underpasses
- * near the line between the two places); each is timed with a Google route forced through it, and a gate's wait is
- * the closing window the gate engine expects at the minute you would reach it.
+ * Best way across the railway between two places, using Google Maps only:
+ *  1. the railway lines around the trip come from Google's train directions between neighbouring stations;
+ *  2. roads come from Google's own route plus routes forced through points along the railway;
+ *  3. every place a road line meets a rail line is a crossing, named or not;
+ *  4. each way is checked again with the exact link Navigate opens, so the app shows only what Google Maps will drive.
+ * A crossing is a gate (can close for trains) unless Google Maps has a bridge or underpass right there.
  */
 class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) {
 
     companion object {
-        const val MAX_GATES = 5
-        const val MAX_BRIDGES = 3
-        /** Google lookups at once: enough to be quick, few enough not to look like a flood */
-        private const val PARALLEL = 5
+        /** Google lookups at once: more than this and Google starts answering with error pages */
+        private const val PARALLEL = 3
+        /** railway points tried as "go through here", at most */
+        private const val MAX_PROBES = 14
+        private const val PROBE_STEP_KM = 0.3
+        /** other ways checked with their Navigate link, besides Google's own */
+        private const val MAX_OTHER_WAYS = 4
+        /** Navigate's stop: this far past the crossing, on the same road */
+        private const val STOP_AFTER_KM = 0.04
+        /** a name on the map this close to a crossing belongs to it */
+        private const val NAME_KM = 0.15
         /** a crossing this close to the start is where you are */
-        private const val AT_KM = 0.05
+        private const val AT_KM = 0.03
+
+        /** Railway lines by section, kept for the app's lifetime (they don't move). */
+        private val railCache = ConcurrentHashMap<String, List<LatLng>>()
 
         private val bridgeWords = Regex(
             "(over\\s*-?\\s*bridge|\\bR\\.?\\s?O\\.?\\s?B\\b|flyover|fly\\s*over|under\\s*-?\\s*pass|\\bR\\.?\\s?U\\.?\\s?B\\b|subway|under\\s*bridge|" +
@@ -109,86 +129,156 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
             }
         }
 
-        /** Google's own road is much quicker than any crossing found: the trip may not cross the line, or crosses where the map has no name. */
-        fun directMuchFaster(plan: Plan): Boolean {
-            val ds = plan.directSec ?: return false
-            val best = plan.legs.minOfOrNull { it.viaSec } ?: return true
-            return best > ds + max(180, ds / 4)
+        private val bridgeQueries = listOf("railway over bridge", "railway underpass", "RUB railway subway")
+
+        /**
+         * The railway line of one section from Google's train routes: the one that starts and ends at the two stations
+         * and is not much longer than the straight line (a train route, not a detour by road). Null if none fits.
+         */
+        internal fun pickRailLine(routes: List<GoogleDirections.Route>, a: LatLng, b: LatLng): List<LatLng>? =
+            routes.sortedByDescending { it.line.size }.firstOrNull { r ->
+                r.line.size >= 2 && Geo.km(r.line.first(), a) < 0.4 && Geo.km(r.line.last(), b) < 0.4 &&
+                    Lines.length(r.line) < 1.35 * Geo.km(a, b) + 0.3
+            }?.line
+
+        /**
+         * Points to try along the railway inside the trip's corridor, every [PROBE_STEP_KM], at most [MAX_PROBES]
+         * spread evenly; points closer than 150 m (overlapping sections) count once.
+         */
+        internal fun probePoints(rails: List<List<LatLng>>, inCorridor: (LatLng) -> Boolean): List<LatLng> {
+            val pts = ArrayList<LatLng>()
+            for (rail in rails) {
+                val len = Lines.length(rail)
+                var s = PROBE_STEP_KM / 2
+                while (s < len) {
+                    val p = Lines.pointAt(rail, s)
+                    if (inCorridor(p) && pts.none { Geo.km(it, p) < 0.15 }) pts += p
+                    s += PROBE_STEP_KM
+                }
+            }
+            if (pts.size <= MAX_PROBES) return pts
+            return (0 until MAX_PROBES).map { pts[Math.round(it * (pts.size - 1).toDouble() / (MAX_PROBES - 1)).toInt()] }
         }
-
-        private fun bridgeQueries(mode: Mode) = listOf("railway over bridge", "ROB rail over bridge", "railway underpass", "RUB railway subway") +
-            if (mode == Mode.WALK) listOf("foot over bridge railway") else emptyList()
     }
-
-    // ------------------------------------------------------------------ planning (online)
 
     /** Steps reported while planning, for the progress line. */
     enum class Step { CROSSINGS, ROUTES, TRAINS }
 
     class NoRoute : Exception("no route")
 
+    private class Found(val pos: LatLng, var route: GoogleDirections.Route, var hitKm: Double, var own: Boolean)
+
     /** [knownLive]: live station boards already fetched (Nearby scan), reused when fresh. */
     suspend fun plan(from: Place, fromIsMe: Boolean, to: Place, mode: Mode, knownLive: Map<String, GateEngine.LiveBoard>,
                      onStep: (Step) -> Unit): Plan = coroutineScope {
         val o = from.pos; val d = to.pos
         val span = Geo.km(o, d)
-        val gate = Semaphore(PARALLEL)
-        suspend fun <T> google(block: () -> T): T? = gate.withPermit { runCatching { block() }.getOrNull() }
-
-        // 1. crossings near the line between the two places (for a long trip: the ones ahead, near the start)
-        onStep(Step.CROSSINGS)
         val near = span <= 15.0
+        // long trips: the crossings ahead, near the start
+        val maxDetour = if (near) max(2.5, 0.5 * span) else (0.3 * span).coerceAtMost(8.0)
+        fun detour(p: LatLng) = Geo.km(o, p) + Geo.km(p, d) - span
+        val sem = Semaphore(PARALLEL)
+        suspend fun <T> google(block: () -> T): T? = sem.withPermit { runCatching { block() }.getOrNull() }
+
+        // 1. railway lines around the trip, Google's own route, and names on the map (labels only)
+        onStep(Step.CROSSINGS)
+        val ownJob = async(Dispatchers.IO) { google { GoogleDirections.routes(listOf(o, d), mode) } }
         val center = if (near) LatLng((o.lat + d.lat) / 2, (o.lng + d.lng) / 2) else o
         val radius = if (near) (span / 2 + 2.5).coerceIn(3.0, 15.0) else 8.0
-        val maxDetour = if (near) max(2.5, 0.5 * span) else (0.3 * span).coerceAtMost(8.0)
-        val directJob = async(Dispatchers.IO) { google { GoogleDirections.routes(listOf(o, d), mode).minByOrNull { it.durationSec } } }
-        val gateJob = async(Dispatchers.IO) { google { GoogleMaps.searchGates(center, radius) } ?: emptyList() }
-        val bridgeJobs = bridgeQueries(mode).map { q -> async(Dispatchers.IO) { google { GoogleMaps.searchPlaces(q, center, radius) } ?: emptyList() } }
+        val gateNamesJob = async(Dispatchers.IO) { google { GoogleMaps.searchGates(center, radius) } ?: emptyList() }
+        val bridgeNameJobs = bridgeQueries.map { q -> async(Dispatchers.IO) { google { GoogleMaps.searchPlaces(q, center, radius) } ?: emptyList() } }
 
-        fun detour(p: LatLng) = Geo.km(o, p) + Geo.km(p, d) - span
-        fun clash(list: List<Crossing>, name: String, p: LatLng) =
-            list.any { Geo.km(it.pos, p) < 0.08 || (it.name.equals(name, true) && Geo.km(it.pos, p) < 0.3) }
-
-        val gates = ArrayList<Crossing>()
-        for (g in gateJob.await()) {
-            if (detour(g.pos) > maxDetour || clash(gates, g.name, g.pos)) continue
-            gates += Crossing(CrossingKind.GATE, g.name, g.pos, g.placeId)
-        }
-        val bridges = ArrayList<Crossing>()
-        for (p in bridgeJobs.awaitAll().flatten()) {
-            if (detour(p.pos) > maxDetour || clash(gates + bridges, p.name, p.pos)) continue
-            if (GoogleMaps.isGateName(p.name) && !bridgeWords.containsMatchIn(p.name)) continue
-            val nearStation = db.nearbyStations(p.pos, 1.5, 1, passengerOnly = false).isNotEmpty()
-            val kind = bridgeKind(p.name, p.categories, nearStation) ?: continue
-            if (kind == CrossingKind.FOOTBRIDGE && mode != Mode.WALK) continue
-            bridges += Crossing(kind, p.name, p.pos, p.placeId)
-        }
-        val crossings = gates.sortedBy { detour(it.pos) }.take(MAX_GATES) + bridges.sortedBy { detour(it.pos) }.take(MAX_BRIDGES)
-
-        // 2. a Google route through each crossing; gates also from the start to the gate, for the minute you reach it
-        onStep(Step.ROUTES)
-        val legs = crossings.map { c ->
-            async(Dispatchers.IO) {
-                val atStart = Geo.km(o, c.pos) < AT_KM
-                val viaJob = async { google { GoogleDirections.routes(if (atStart) listOf(o, d) else listOf(o, c.pos, d), mode).firstOrNull() } }
-                val toJob = async {
-                    when {
-                        c.kind != CrossingKind.GATE -> null
-                        atStart -> 0
-                        else -> google { GoogleDirections.routes(listOf(o, c.pos), mode).firstOrNull()?.durationSec }
-                    }
-                }
-                val via = viaJob.await() ?: return@async null
-                val to = toJob.await()
-                // a gate whose arrival time is unknown can't be timed: better left out than shown wrong
-                if (c.kind == CrossingKind.GATE && to == null) return@async null
-                Leg(c, to?.coerceAtMost(via.durationSec), via.durationSec, via.distanceM)
+        val pad = 0.06
+        val box = if (near) doubleArrayOf(min(o.lat, d.lat) - pad, max(o.lat, d.lat) + pad, min(o.lng, d.lng) - pad, max(o.lng, d.lng) + pad)
+            else doubleArrayOf(o.lat - 0.08, o.lat + 0.08, o.lng - 0.08, o.lng + 0.08)
+        val sections = withContext(Dispatchers.IO) { db.railSections(box[0], box[1], box[2], box[3]) }
+            .map { (a, b) ->
+                // a section the straight line of the trip runs across is always kept, however far its stations are
+                val across = Lines.segmentT(o, d, a.pos, b.pos, kotlin.math.cos(Math.toRadians(o.lat))) != null
+                Triple(a, b, if (across) 0.0 else min(detour(a.pos), detour(b.pos)))
             }
-        }.awaitAll().filterNotNull()
-        val direct = directJob.await()
-        if (legs.isEmpty() && direct == null) throw NoRoute()
+            .filter { it.third <= maxDetour + 3 }
+            .sortedBy { it.third }.take(12).map { it.first to it.second }
+        val rails = sections.map { (a, b) ->
+            async(Dispatchers.IO) {
+                val key = "${a.code}|${b.code}"
+                railCache[key] ?: (google { GoogleDirections.trainRoutes(a.pos, b.pos) }?.let { pickRailLine(it, a.pos, b.pos) }
+                    ?.also { railCache[key] = it } ?: listOf(a.pos, b.pos))
+            }
+        }.awaitAll()
+        val own = ownJob.await()?.filter { it.line.size >= 2 }
+        if (own.isNullOrEmpty()) throw NoRoute()
 
-        // 3. live trains at the stations next to the gates
+        // 2. roads across: Google's own route, then routes through points along the railway
+        onStep(Step.ROUTES)
+        val found = ArrayList<Found>()
+        fun add(r: GoogleDirections.Route, isOwn: Boolean): Int {
+            val hits = Lines.crossings(r.line, rails)
+            if (hits.size != 1) return hits.size        // none, or across and back: not one way across
+            val h = hits[0]
+            val f = found.firstOrNull { Geo.km(it.pos, h.pos) < 0.08 }
+            when {
+                f == null -> found += Found(h.pos, r, h.atKm, isOwn)
+                isOwn && !f.own -> { f.route = r; f.hitKm = h.atKm; f.own = true }
+                !f.own && r.durationSec < f.route.durationSec -> { f.route = r; f.hitKm = h.atKm }
+            }
+            return 1
+        }
+        val ownHits = own.map { add(it, true) }
+        // Google's own road doesn't cross the railway: both places are on the same side
+        val sameSide = ownHits.first() == 0
+        val probes = probePoints(rails) { detour(it) <= maxDetour }
+        val probeRoutes = probes.map { p -> async(Dispatchers.IO) { google { GoogleDirections.routes(listOf(o, p, d), mode).firstOrNull() } } }.awaitAll()
+        probeRoutes.filterNotNull().filter { it.line.size >= 2 }.forEach { add(it, false) }
+
+        // 3. check each way with the exact link Navigate will open
+        val ownSec = own.minOf { it.durationSec }
+        val ownWays = found.filter { it.own }.map { f -> Triple(f, f.route, null as LatLng?) }
+        val others = found.filter { !it.own && it.route.durationSec <= ownSec * 5 / 2 + 600 }
+            .sortedBy { it.route.durationSec }.take(MAX_OTHER_WAYS)
+            .map { f ->
+                async(Dispatchers.IO) {
+                    val stop = Lines.pointAt(f.route.line, f.hitKm + STOP_AFTER_KM)
+                    val r = google { GoogleDirections.routes(listOf(o, stop, d), mode).firstOrNull() } ?: return@async null
+                    val hits = Lines.crossings(r.line, rails)
+                    // Google Maps must cross exactly here and nowhere else, or this way would confuse more than help
+                    if (hits.size != 1 || Geo.km(hits[0].pos, f.pos) >= 0.08) null else Triple(f, r, stop)
+                }
+            }.awaitAll().filterNotNull()
+        val ways = ownWays + others
+
+        // names on the map (labels, and bridge or underpass instead of gate)
+        val gateNames = gateNamesJob.await()
+        val bridgeNames = bridgeNameJobs.awaitAll().flatten().mapNotNull { p ->
+            val nearStation = db.nearbyStations(p.pos, 1.5, 1, passengerOnly = false).isNotEmpty()
+            bridgeKind(p.name, p.categories, nearStation)?.takeIf { it != CrossingKind.FOOTBRIDGE || mode == Mode.WALK }?.let { Triple(p.name, p.pos, it) }
+        }
+        fun crossingAt(pos: LatLng): Crossing {
+            val g = gateNames.filter { Geo.km(it.pos, pos) <= NAME_KM }.minByOrNull { Geo.km(it.pos, pos) }
+            // a gate on the map wins: never call a crossing "never closes" when a gate may be there
+            if (g != null) return Crossing(CrossingKind.GATE, g.name, true, pos)
+            val b = bridgeNames.filter { Geo.km(it.second, pos) <= NAME_KM }.minByOrNull { Geo.km(it.second, pos) }
+            if (b != null) return Crossing(b.third, b.first, true, pos)
+            val st = db.nearbyStations(pos, 5.0, 1).firstOrNull()
+            return Crossing(CrossingKind.GATE, st?.name ?: "", false, pos)
+        }
+
+        // time to each gate: Google's route from the start to just before it (bridges: share of the trip by distance)
+        val legs = ways.map { (f, r, stop) ->
+            async(Dispatchers.IO) {
+                val c = crossingAt(f.pos)
+                val hitKm = Lines.crossings(r.line, rails).firstOrNull()?.atKm ?: f.hitKm
+                val share = (r.durationSec * hitKm / Lines.length(r.line).coerceAtLeast(1e-6)).toInt()
+                val toSec = when {
+                    Geo.km(o, f.pos) < AT_KM -> 0
+                    c.kind != CrossingKind.GATE -> share
+                    else -> google { GoogleDirections.routes(listOf(o, Lines.pointAt(r.line, hitKm - 0.02)), mode).firstOrNull()?.durationSec } ?: share
+                }
+                Leg(c, toSec.coerceIn(0, r.durationSec), r.durationSec, r.distanceM, stop)
+            }
+        }.awaitAll()
+
+        // 4. live trains at the stations next to the gates
         onStep(Step.TRAINS)
         val stations = legs.filter { it.crossing.kind == CrossingKind.GATE }
             .mapNotNull { db.nearbyStations(it.crossing.pos, 10.0, 1).firstOrNull() }
@@ -197,7 +287,7 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         val reuse = knownLive.filter { (code, b) -> stations.any { it.code == code } && now - b.fetchedEpochSec < 300 }
         val live = reuse + fetchLive(stations.filter { it.code !in reuse })
 
-        Plan(from, fromIsMe, to, mode, legs, direct?.durationSec, direct?.distanceM, stations, live, now, now)
+        Plan(from, fromIsMe, to, mode, legs, sameSide && legs.isEmpty(), stations, live, now, now)
     }
 
     private suspend fun fetchLive(stations: List<Station>): Map<String, GateEngine.LiveBoard> = coroutineScope {
@@ -222,38 +312,28 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
      */
     fun evaluate(plan: Plan, here: LatLng?, now: Long): List<Option> {
         val pos = here ?: plan.from.pos
-        val list = plan.legs.map { leg ->
+        return plan.legs.map { leg ->
             val c = leg.crossing
             val startKm = Geo.km(plan.from.pos, c.pos)
-            // bridges: share of the trip time by distance (no wait depends on it)
-            val baseTo = leg.toCrossingSec ?: if (startKm < AT_KM) 0
-                else (leg.viaSec * startKm / (startKm + Geo.km(c.pos, plan.to.pos)).coerceAtLeast(0.001)).toInt()
-            val after = (leg.viaSec - baseTo).coerceAtLeast(0)
-            val toSec = if (here == null || startKm < AT_KM) baseTo
-                else (baseTo * (Geo.km(pos, c.pos) / startKm)).toInt().coerceIn(0, baseTo * 2 + 600)
+            val after = (leg.viaSec - leg.toCrossingSec).coerceAtLeast(0)
+            val toSec = if (here == null || startKm < AT_KM) leg.toCrossingSec
+                else (leg.toCrossingSec * (Geo.km(pos, c.pos) / startKm)).toInt().coerceIn(0, leg.toCrossingSec * 2 + 600)
             val eta = now + toSec
             if (c.kind != CrossingKind.GATE) {
-                Option(leg, toSec, eta, 0, toSec + after, AtArrival.NO_GATE, null, null, emptyList(), live = true, googleWay = false)
+                Option(leg, toSec, eta, 0, toSec + after, AtArrival.NO_GATE, null, null, emptyList(), live = true, googleWay = leg.own)
             } else {
-                val st = engine.gateStatus(Gate(c.name, c.pos, c.placeId, "maps"), pos, plan.live, now)
+                val st = engine.gateStatus(Gate(c.name, c.pos, null, "route"), pos, plan.live, now)
                 val a = GateEngine.arrival(st.passes, eta)
                 val trains = a.trains.ifEmpty { st.passes.filter { a.nextClose != null && it.closeEpochSec >= a.nextClose }.take(2) }
                 Option(
                     leg, toSec, eta, a.waitSec.toInt(), toSec + a.waitSec.toInt() + after,
                     if (a.waitSec > 0) AtArrival.CLOSED else AtArrival.OPEN, a.opensAt, a.nextClose, trains,
                     live = trains.isNotEmpty() && trains.all { it.timeSource == TimeSource.LIVE },
-                    googleWay = false,
+                    googleWay = leg.own,
                 )
             }
         }
-        // the crossing whose forced route matches Google's own fastest one is most likely the road Google takes
-        val google = plan.directSec?.let { ds ->
-            list.minByOrNull { abs(it.leg.viaSec - ds) }?.takeIf {
-                abs(it.leg.viaSec - ds) <= max(60, ds / 10) && abs(it.leg.viaM - (plan.directM ?: it.leg.viaM)) <= max(150, (plan.directM ?: 0) / 12)
-            }
-        }
-        return list.map { if (it === google) it.copy(googleWay = true) else it }
-            // a minute either way is noise: then a bridge (never closes) beats a gate
-            .sortedWith(compareBy({ it.totalSec / 60 }, { if (it.leg.crossing.kind == CrossingKind.GATE) 1 else 0 }, { it.totalSec }))
+            // a minute either way is noise: then Google's own road (no extra stop), then a bridge (never closes)
+            .sortedWith(compareBy({ it.totalSec / 60 }, { if (it.googleWay) 0 else 1 }, { if (it.leg.crossing.kind == CrossingKind.GATE) 1 else 0 }, { it.totalSec }))
     }
 }

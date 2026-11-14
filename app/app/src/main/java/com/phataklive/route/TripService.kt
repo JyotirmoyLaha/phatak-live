@@ -26,6 +26,7 @@ import com.phataklive.data.LatLng
 import com.phataklive.data.PhatakDb
 import com.phataklive.gate.GateEngine
 import com.phataklive.ui.Strings
+import com.phataklive.ui.label
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -186,14 +187,15 @@ class TripService : Service() {
         // the gate you are heading for will be down when you get there
         if (chosen.at == AtArrival.CLOSED && !alertedClosed) {
             alertedClosed = true
-            nm.notify(ID_ALERT, alert(t.closedOnArrival(chosen.leg.crossing.name, chosen.waitSec / 60), chosen.opensAt?.let { t.opensAtTime(GateEngine.fmt(it)) }))
+            nm.notify(ID_ALERT, alert(t.closedOnArrival(chosen.leg.crossing.label(t), chosen.waitSec / 60), chosen.opensAt?.let { t.opensAtTime(GateEngine.fmt(it)) }))
         } else if (chosen.at != AtArrival.CLOSED) alertedClosed = false
         // another way is now clearly faster
         val best = options.firstOrNull()
+        val bestName = best?.leg?.crossing?.label(t)
         if (best != null && best.leg.crossing != st.crossing && chosen.totalSec - best.totalSec >= SWITCH_SAVES_SEC &&
-            alertedSwitch != best.leg.crossing.name) {
-            alertedSwitch = best.leg.crossing.name
-            nm.notify(ID_ALERT, alert(t.switchTo(best.leg.crossing.name, (chosen.totalSec - best.totalSec) / 60), null))
+            alertedSwitch != bestName) {
+            alertedSwitch = bestName
+            nm.notify(ID_ALERT, alert(t.switchTo(bestName!!, (chosen.totalSec - best.totalSec) / 60), null))
         }
     }
 
@@ -215,10 +217,11 @@ class TripService : Service() {
 
     private fun ongoing(st: Trip.State, t: Strings): Notification {
         val o = st.chosen
-        val title = if (o == null) t.tripOn(st.crossing.name) else when (o.at) {
-            AtArrival.CLOSED -> "${st.crossing.name} · ${t.closedShort(o.waitSec / 60)}"
-            AtArrival.OPEN -> "${st.crossing.name} · ${t.openOnArrival}"
-            AtArrival.NO_GATE -> "${st.crossing.name} · ${t.neverCloses}"
+        val name = st.crossing.label(t)
+        val title = if (o == null) t.tripOn(name) else when (o.at) {
+            AtArrival.CLOSED -> "$name · ${t.closedShort(o.waitSec / 60)}"
+            AtArrival.OPEN -> "$name · ${t.openOnArrival}"
+            AtArrival.NO_GATE -> "$name · ${t.neverCloses}"
         }
         val body = o?.let { t.reachIn(it.toCrossingSec / 60, GateEngine.fmt(it.etaSec)) } ?: t.tripStarting
         val stop = PendingIntent.getService(this, 1, Intent(this, TripService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)

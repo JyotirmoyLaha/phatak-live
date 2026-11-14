@@ -1,11 +1,13 @@
 package com.phataklive
 
 import com.phataklive.data.GatePass
+import com.phataklive.data.LatLng
 import com.phataklive.data.TimeSource
 import com.phataklive.gate.GateEngine
 import com.phataklive.net.GoogleDirections
 import com.phataklive.route.CrossingKind
 import com.phataklive.route.CrossingPlanner
+import com.phataklive.route.Lines
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -68,6 +70,62 @@ class RouteLogicTest {
         assertEquals("Guskara Station Rd", r[0].summary)
         assertEquals(480, r[1].durationSec)
         assertEquals(0, GoogleDirections.parse(")]}'\n[[null,null]]").size)
+    }
+
+    @Test fun roadLineDecoded() {
+        // first value, then differences, in 1e-7 degrees (Google's [0][7][i] layout)
+        val body = ")]}'\n[[null,[[[2,\"Rd\",[500,\"500 m\",0],[120,\"2 min\"]]]],null,null,null,null,null," +
+            "[[[234932644,5,-64],[877320681,857,3038],null,null,[17,-1,-2]]]]]"
+        val r = GoogleDirections.parse(body).single()
+        assertEquals(3, r.line.size)
+        assertEquals(23.4932644, r.line[0].lat, 1e-9)
+        assertEquals(87.7320681, r.line[0].lng, 1e-9)
+        assertEquals(23.4932585, r.line[2].lat, 1e-9)
+        assertEquals(87.7324576, r.line[2].lng, 1e-9)
+        // no line in the reply: the route still counts, with an empty line
+        assertEquals(0, GoogleDirections.parse(")]}'\n[[null,[[[2,\"Rd\",[500,\"500 m\",0],[120,\"2 min\"]]]]]]").single().line.size)
+    }
+
+    @Test fun roadMeetsRailway() {
+        // railway running north-south at lng 87.7336; a road going west across it, and one staying east
+        val rail = listOf(LatLng(23.50, 87.7336), LatLng(23.48, 87.7336))
+        val across = listOf(LatLng(23.4906, 87.7376), LatLng(23.4906, 87.7340), LatLng(23.4937, 87.7330), LatLng(23.4930, 87.7290))
+        val hits = Lines.crossings(across, listOf(rail))
+        assertEquals(1, hits.size)
+        assertEquals(87.7336, hits[0].pos.lng, 1e-6)
+        assertEquals(0, Lines.crossings(listOf(LatLng(23.49, 87.74), LatLng(23.48, 87.738)), listOf(rail)).size)
+        // double track (lines ~4 m apart) counts once; across and back counts twice
+        val double = listOf(rail, listOf(LatLng(23.50, 87.73364), LatLng(23.48, 87.73364)))
+        assertEquals(1, Lines.crossings(across, double).size)
+        val back = listOf(LatLng(23.49, 87.735), LatLng(23.49, 87.732), LatLng(23.485, 87.732), LatLng(23.485, 87.735))
+        assertEquals(2, Lines.crossings(back, listOf(rail)).size)
+    }
+
+    @Test fun pointAlongLine() {
+        val line = listOf(LatLng(23.0, 87.0), LatLng(23.0, 87.01))
+        val len = Lines.length(line)
+        val mid = Lines.pointAt(line, len / 2)
+        assertEquals(87.005, mid.lng, 1e-6)
+        assertEquals(87.01, Lines.pointAt(line, len + 5).lng, 1e-9)   // clamped to the end
+    }
+
+    @Test fun railLineMustFollowTheStations() {
+        val a = LatLng(23.54544, 87.72072); val b = LatLng(23.49055, 87.73362)
+        val train = GoogleDirections.Route(6300, 600, null, listOf(a, LatLng(23.52, 87.727), b))
+        val road = GoogleDirections.Route(9000, 900, null, listOf(a, LatLng(23.52, 87.78), b))   // a long way round
+        val wrongEnd = GoogleDirections.Route(6300, 600, null, listOf(a, LatLng(23.40, 87.70)))
+        assertEquals(train.line, CrossingPlanner.pickRailLine(listOf(road, wrongEnd, train), a, b))
+        assertNull(CrossingPlanner.pickRailLine(listOf(road, wrongEnd), a, b))
+    }
+
+    @Test fun probesSpreadAlongRailway() {
+        val rail = listOf(LatLng(23.50, 87.7336), LatLng(23.40, 87.7336))   // ~11 km
+        val all = CrossingPlanner.probePoints(listOf(rail)) { true }
+        assertEquals(14, all.size)                                          // capped, spread end to end
+        val few = CrossingPlanner.probePoints(listOf(rail)) { it.lat > 23.49 }
+        assertEquals(4, few.size)                                           // ~1.1 km of corridor: at 0.15, 0.45, 0.75, 1.05 km
+        // the same railway twice (two sections) adds no extra points
+        assertEquals(few.size, CrossingPlanner.probePoints(listOf(rail, rail)) { it.lat > 23.49 }.size)
     }
 
     @Test fun bridgeNames() {

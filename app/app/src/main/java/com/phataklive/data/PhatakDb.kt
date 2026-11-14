@@ -169,6 +169,26 @@ class PhatakDb private constructor(private val db: SQLiteDatabase) {
         return days to out
     }
 
+    /**
+     * Railway sections around a box: every pair of consecutive stations of any train (stops and pass-throughs) with at
+     * least one end inside it. Together they are the railway lines there, end to end.
+     */
+    fun railSections(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double): List<Pair<Station, Station>> {
+        val codes = db.rawQuery("select code from station where lat between ? and ? and lng between ? and ?",
+            arrayOf("$minLat", "$maxLat", "$minLng", "$maxLng")).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+        val pairs = HashSet<Pair<String, String>>()
+        for (code in codes) for (sql in listOf(
+            "select p.station, s.station from stop s join stop p on p.train_no = s.train_no and p.seq = s.seq - 1 where s.station = ?",
+            "select p.station, s.station from stop p join stop s on s.train_no = p.train_no and s.seq = p.seq + 1 where p.station = ?",
+        )) db.rawQuery(sql, arrayOf(code)).use { c ->
+            while (c.moveToNext()) {
+                val a = c.getString(0); val b = c.getString(1)
+                if (a != b) pairs += if (a < b) a to b else b to a
+            }
+        }
+        return pairs.mapNotNull { (a, b) -> station(a)?.let { sa -> station(b)?.let { sb -> sa to sb } } }
+    }
+
     fun trainName(no: String): String? =
         db.rawQuery("select name from train where no = ?", arrayOf(no)).use { if (it.moveToFirst()) it.getString(0) else null }
 

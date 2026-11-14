@@ -178,12 +178,17 @@ class Strings(lang: String) {
         "पहुँचने पर बंद मिलेगा: ~${mins(m)} इंतज़ार, ~$time पर खुलेगा",
         "পৌঁছালে বন্ধ পাবেন: ~${mins(m)} অপেক্ষা, ~$time-এ খুলবে")
     fun closedShort(m: Int) = t("closed, wait ~${mins(m)}", "बंद, ~${mins(m)} इंतज़ार", "বন্ধ, ~${mins(m)} অপেক্ষা")
+    fun crossingNear(st: String) = t("Rail crossing near $st", "$st के पास रेल क्रॉसिंग", "$st-এর কাছে রেল ক্রসিং")
+    val railCrossing = t("Rail crossing", "रेल क्रॉसिंग", "রেল ক্রসিং")
+    val navStopNote = t("Google Maps will show a stop just after this crossing. Don't stop there, just keep going.",
+        "Google Maps इस क्रॉसिंग के ठीक बाद एक स्टॉप दिखाएगा। वहाँ रुकना नहीं है, बस चलते रहें।",
+        "Google Maps এই ক্রসিংয়ের ঠিক পরে একটা স্টপ দেখাবে। সেখানে থামতে হবে না, শুধু চলতে থাকুন।")
+    val sameSide = t("This trip doesn't cross the railway, so no gate is on the way.",
+        "इस रास्ते में पटरी पार नहीं करनी, इसलिए रास्ते में कोई फाटक नहीं है।",
+        "এই পথে লাইন পার হতে হয় না, তাই পথে কোনো গেট নেই।")
     val neverCloses = t("No gate: never closes for trains", "फाटक नहीं: ट्रेन के लिए कभी बंद नहीं होता", "গেট নেই: ট্রেনের জন্য কখনো বন্ধ হয় না")
     val navigateBtn = t("Navigate", "नेविगेट करें", "নেভিগেট করুন")
     val mapBtn = t("Map", "नक्शा", "ম্যাপ")
-    fun directFaster(m: Int) = t("Google's fastest road takes ${mins(m)}. It may not cross the railway, or it crosses at a place that has no name on the map.",
-        "Google का सबसे तेज़ रास्ता ${mins(m)} का है। हो सकता है वह पटरी पार न करे, या ऐसी जगह से पार करे जिसका नक्शे पर नाम नहीं है।",
-        "Google-এর সবচেয়ে দ্রুত পথে ${mins(m)} লাগে। হয়তো সেটি লাইন পার হয় না, বা এমন জায়গা দিয়ে পার হয় যার ম্যাপে নাম নেই।")
     val noCrossings = t("No rail gate, overbridge or underpass found on the map between these places.",
         "इन जगहों के बीच नक्शे पर कोई रेल फाटक, ओवरब्रिज या अंडरपास नहीं मिला।",
         "এই জায়গাগুলোর মধ্যে ম্যাপে কোনো রেল গেট, ওভারব্রিজ বা আন্ডারপাস পাওয়া যায়নি।")
