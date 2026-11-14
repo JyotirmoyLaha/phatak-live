@@ -52,7 +52,7 @@ when will it open?"***
 Phatak Live **computes** each gate's status from train movements. It doesn't wait for someone to report it.
 
 1. **Where you are.** GPS gives your location; the app shows the place name and the railway stations within
-   10, 15 or 20 km from its built-in rail database covering all of India.
+   10 or 20 km (or any distance you set, up to 100 km) from its built-in rail database covering all of India.
 2. **Which gates are near.** Rail gates and level crossings around you, and near each nearby station, are looked up
    live on the map. Look-alikes such as station entrances or streets named "Railway Gate Road" are filtered out.
 3. **Which trains pass them.** The built-in timetable covers trains across India, **including stations a
