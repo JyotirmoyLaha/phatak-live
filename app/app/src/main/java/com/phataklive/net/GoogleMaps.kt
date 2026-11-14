@@ -43,22 +43,27 @@ object GoogleMaps {
         }
     }
 
-    /** Places matching [query] around [near]; Google only biases by location, so results are distance-filtered. */
-    fun searchPlaces(query: String, near: LatLng, radiusKm: Double): List<Place> {
-        val data = fetch(query, near, (radiusKm * 2000).toInt().coerceIn(2000, 60000))
-        val list = data.at(0, 1) as? JSONArray ?: return emptyList()
-        val out = ArrayList<Place>()
-        for (i in 0 until list.length()) {
-            val p = list.at(i, 14) as? JSONArray ?: continue
-            val name = p.at(11) as? String ?: continue
-            val lat = (p.at(9, 2) as? Number)?.toDouble() ?: continue
-            val lng = (p.at(9, 3) as? Number)?.toDouble() ?: continue
+    /**
+     * Places matching [query] around [near]. Google only biases by location, so with a [radiusKm] results are
+     * distance-filtered; with `null` (typed searches) a place anywhere in India is kept. Google corrects spelling
+     * ("bali raliway crosing" finds Bally Railway Crossing).
+     */
+    fun searchPlaces(query: String, near: LatLng, radiusKm: Double?): List<Place> {
+        val data = fetch(query, near, ((radiusKm ?: 30.0) * 2000).toInt().coerceIn(2000, 60000))
+        fun place(p: JSONArray?): Place? {
+            p ?: return null
+            val name = p.at(11) as? String ?: return null
+            val lat = (p.at(9, 2) as? Number)?.toDouble() ?: return null
+            val lng = (p.at(9, 3) as? Number)?.toDouble() ?: return null
             val pos = LatLng(lat, lng)
-            if (Geo.km(near, pos) > radiusKm) continue
+            if (radiusKm != null && Geo.km(near, pos) > radiusKm) return null
             val cats = (p.at(13) as? JSONArray)?.let { a -> (0 until a.length()).mapNotNull { a.optString(it, null) } } ?: emptyList()
-            out += Place(name, pos, cats, p.at(78) as? String, p.at(39) as? String)
+            return Place(name, pos, cats, p.at(78) as? String, p.at(39) as? String)
         }
-        return out
+        // a query naming one place gets that place's card instead of a list
+        val list = data.at(0, 1) as? JSONArray
+        val found = (0 until (list?.length() ?: 0)).mapNotNull { place(list!!.at(it, 14) as? JSONArray) }
+        return found.ifEmpty { listOfNotNull(place(data.at(6) as? JSONArray)) }
     }
 
     private val gateWords = Regex(
@@ -70,7 +75,7 @@ object GoogleMaps {
     // Gate No. 2"), streets named after a gate ("Railway Gate Rd"), and shops or stops nearby.
     private val notAGate = Regex(
         "(\\bstation\\b|\\broad\\b|\\brd\\b|\\bstreet\\b|\\bst\\.?$|\\blane\\b|\\bmarg\\b|\\bcolony\\b|\\bnagar\\b|\\bmetro\\b|" +
-            "\\bbus\\b|\\bstop\\b|\\bhotel\\b|\\bschool\\b|\\bmarket\\b|\\bshop\\b|\\bstore\\b|\\bapartment|\\bsociety\\b|\\bparking\\b)",
+            "\\bbus\\b|\\bstop\\b|\\bhotel\\b|\\bschool\\b|\\bmarket\\b|\\bbaza+r\\b|\\bhaat\\b|\\bshop\\b|\\bstore\\b|\\bapartment|\\bsociety\\b|\\bparking\\b)",
         RegexOption.IGNORE_CASE,
     )
 

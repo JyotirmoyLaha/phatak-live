@@ -66,19 +66,25 @@ Phatak Live **computes** each gate's status from train movements. It doesn't wai
 
 ### Gate timing rule
 
-There is no single published "close X minutes before the train" figure for Indian Railways; the gateman closes the
-gate on the station master's instruction and reopens only after the whole train has passed and the station master
-allows it. Phatak Live's rule follows what is reported from the ground:
+There is no single published "close X minutes before the train" figure for Indian Railways. The rules tie the gate
+to the station master sending the train off: before taking off the departure signal (or giving line clear) for a
+train, the station master gives the gateman the train's number and direction; the gateman closes and locks the gate
+and confirms with his private number (G&SR SR 16.03/4). So the gate stays down for the whole run from the station
+before the gate, and the lead time depends on where the gate is. Phatak Live models that:
 
 | | Phatak Live | Evidence |
 |---|---|---|
-| Gate closes | **~10 min before** the train reaches the gate | Gatemen get the station master's call about 15–20 min before a train ([report](https://www.dtnext.in/news/tamilnadu/lc-gate-closed-at-706-am-bikers-forced-gatekeeper-partially-open-it-839516)); at non-interlocked gates a wait of about 5–10 min after closing is observed ([ETV Bharat, Sept 2026](https://www.etvbharat.com/en/bharat/railways-asks-zones-to-modify-rules-to-strengthen-safety-at-non-interlocked-level-crossing-gates-enn26091703952)) |
-| Gate opens | **~3 min after** the train has passed | Reopening needs a tail-board check and the station master's permission (same ETV Bharat report) |
-| Total per train | **~13 min** | A gateman at a busy Guwahati crossing reported 10–15 min per train, ~13 min on average (Guwahati Plus) |
-| Trains close together | windows less than 2 min apart are merged: the gate stays down | |
-| Gate within 600 m of a station | time taken midway between the train's arrival and departure there | |
+| Gate closes | **~3 min before the train leaves the station before the gate**, then stays down while the train runs to it: about 4–15 min before the train reaches the gate | Station master informs the gateman before taking off departure signals; departure signals only after the gateman's private number (G&SR SR 16.03/4 (B) ii, x). After closing, a wait of about 5–10 min is typical at non-interlocked gates ([ETV Bharat, Sept 2026](https://www.etvbharat.com/en/bharat/railways-asks-zones-to-modify-rules-to-strengthen-safety-at-non-interlocked-level-crossing-gates-enn26091703952)) |
+| Train not stopping at that station | **+3 min**: it runs through on signals cleared while it is still approaching | Signals are not taken off more than 10 min before the train is due (SR 3.36/2) |
+| Gate next to a station, arrival side | at most **10 min** before the train reaches it | Such gates work with the station's signals, cleared at most 10 min ahead (SR 3.36/2) |
+| Gate opens | **~3 min after** the train has passed | Gateman confirms the tail board / tail lamp; on double line and closed-to-traffic gates the station master's permission is also needed, given only when no train is in the section in either direction (SR 16.03/4 (A) ii, (B) xi) |
+| Trains close together | windows less than 3 min apart are merged: the gate stays down | Opening is not allowed while another train is already in the section (same rules) |
+| Gate within 600 m of a station | the train is timed at its arrival or its departure there, depending on which side of the station the gate is | |
 | Gate between stations | interpolated by distance along the track between two consecutive stations | |
-| Live train missing from the timetable (specials) | live time at the nearest station ± travel time at ~40 km/h | |
+| Live train missing from the timetable (specials) | live time at the nearest station ± travel time at ~40 km/h, closing ~8 min ahead | |
+| Goods trains | not shown (no timetable); the in-app info box says a gate can also close for them | |
+
+Long closures are real: commuters in Amritsar reported a gate shut for 20–26 min ([Tribune, May 2025](https://www.tribuneindia.com/news/amritsar/prolonged-closure-of-gates-at-rly-crossing-irks-commuters)).
 
 Real closures vary by gate (interlocked or not, busy or quiet line) and by gateman, so the app always shows times as
 estimates ("~") and says whether the train time behind them is live.
@@ -120,7 +126,7 @@ in any town in India.
 - **Opens straight to your area**: place name, nearest stations, every rail gate found around you.
 - **Hero gate card**: pulsing state light, big countdown ("Opens in 4 min"), closing-window timeline with a "now" marker.
 - **Gate list** with OPEN / CLOSING SOON / CLOSED, LIVE / TIMETABLE badge, trains and their delays, directions.
-- **Find gate**: by gate number, town or station, typed in English, Hindi or Bengali.
+- **Find gate**: any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type (gates from Google Maps and "Gates near … station"), and small spelling mistakes are fine (Google corrects them; station names are matched by spelling similarity).
 - **Trains**: live delay, last seen near, next stops with platforms; "Did you mean…?" when a typed name is ambiguous.
   Train numbers can be typed in Hindi or Bengali digits too.
 - **Station boards**: next 3 hours at each nearby station, including trains that pass without stopping.
@@ -216,3 +222,6 @@ data files in `app/app/src/main/assets/`.
 - Gate closing and reopening procedure at non-interlocked gates: [ETV Bharat, 17 Sept 2026](https://www.etvbharat.com/en/bharat/railways-asks-zones-to-modify-rules-to-strengthen-safety-at-non-interlocked-level-crossing-gates-enn26091703952)
 - Station master's call to the gateman 15–20 min before a train: [DT Next, July 2025](https://www.dtnext.in/news/tamilnadu/lc-gate-closed-at-706-am-bikers-forced-gatekeeper-partially-open-it-839516)
 - Gate closed ~13 min per train at a busy crossing (gateman's estimate): Guwahati Plus, "Guwahati wastes 18 hours a day at rail level crossings"
+- Gate working rules (SR 16.03/4: who tells the gateman, when he may reopen; SR 3.36/2: signals not taken off more than 10 min before a train is due): Indian Railways General & Subsidiary Rules, Northern Railway edition, Chapters III and XVI ([text copy](https://gsrnr.netlify.app/))
+- Station master's private-number check with the gateman before a train enters the block section: [LDCE Guide: Level crossing gate](https://ldceguidetraffic.blogspot.com/2019/11/level-crossing-gate.html)
+- Gates closed for 20–26 min: [Tribune India, May 2025](https://www.tribuneindia.com/news/amritsar/prolonged-closure-of-gates-at-rly-crossing-irks-commuters)

@@ -83,6 +83,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -105,6 +106,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -122,6 +124,7 @@ import com.phataklive.data.GateStatus
 import com.phataklive.data.StationBoard
 import com.phataklive.data.TimeSource
 import com.phataklive.gate.GateEngine
+import com.phataklive.search.LiveSearch
 import com.phataklive.update.UpdateChecker
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -706,12 +709,17 @@ private fun BoardCard(b: StationBoard, t: Strings) {
 // ===================================================================================== search tabs
 
 @Composable
-private fun SearchField(id: String, hint: String, busy: Boolean, initial: String, onClear: () -> Unit, onSearch: (String) -> Unit) {
+private fun SearchField(
+    id: String, hint: String, busy: Boolean, initial: String, onClear: () -> Unit,
+    onType: (String) -> Unit = {}, onSearch: (String) -> Unit,
+) {
     // keyed by a fixed id, so switching language doesn't wipe what the user typed
     var q by rememberSaveable(id) { mutableStateOf(initial) }
+    // a picked suggestion puts its name in the box
+    LaunchedEffect(initial) { if (initial.isNotEmpty()) q = initial }
     OutlinedTextField(
         value = q, modifier = Modifier.fillMaxWidth(), singleLine = true,
-        onValueChange = { q = it; if (it.isBlank()) onClear() },   // emptied by hand: results go too
+        onValueChange = { q = it; onType(it); if (it.isBlank()) onClear() },   // emptied by hand: results go too
         placeholder = { Text(hint) }, shape = RoundedCornerShape(16.dp),
         leadingIcon = { Icon(Icons.Rounded.Search, null) },
         trailingIcon = {
@@ -725,13 +733,43 @@ private fun SearchField(id: String, hint: String, busy: Boolean, initial: String
 }
 
 @Composable
+private fun Suggestions(list: List<LiveSearch.Suggestion>, t: Strings, onPick: (LiveSearch.Suggestion) -> Unit) {
+    val c = Phatak.c
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = c.card),
+        border = BorderStroke(1.dp, c.cardBorder), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        list.forEachIndexed { i, sug ->
+            if (i > 0) HorizontalDivider(color = c.cardBorder)
+            val (icon, title, sub, km) = when (sug) {
+                is LiveSearch.Suggestion.GatePlace -> Quad(Icons.Rounded.Traffic, sug.gate.name, sug.address, sug.distanceKm)
+                is LiveSearch.Suggestion.NearStation -> Quad(Icons.Rounded.DirectionsRailway, t.gatesNearStation(sug.station.name), sug.station.code, sug.distanceKm)
+            }
+            Row(Modifier.fillMaxWidth().clickable { onPick(sug) }.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, null, tint = c.muted, modifier = Modifier.size(20.dp))
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                }
+                Text(if (km < 10) "%.1f km".format(km) else "%.0f km".format(km), style = MaterialTheme.typography.labelMedium, color = c.muted)
+            }
+        }
+    }
+}
+
+private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+@Composable
 private fun GateSearchTab(s: UiState, t: Strings, vm: MainViewModel) {
     val now = nowSec()
+    val focus = LocalFocusManager.current
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(t.searchGateTitle, style = MaterialTheme.typography.headlineSmall)
             Text(t.searchGateSub, style = MaterialTheme.typography.bodyMedium, color = Phatak.c.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-            SearchField("gate", t.gateHint, s.gateSearching, s.gateQuery, onClear = vm::clearGateSearch) { q -> vm.setGateQuery(q); vm.searchGate(q) }
+            SearchField("gate", t.gateHint, s.gateSearching, s.gateQuery, onClear = vm::clearGateSearch, onType = vm::onGateTyping) { q ->
+                focus.clearFocus(); vm.setGateQuery(q); vm.searchGate(q)
+            }
+            if (s.gateSuggestions.isNotEmpty()) Suggestions(s.gateSuggestions, t) { focus.clearFocus(); vm.pickSuggestion(it) }
         }
         s.gateProblem?.let { item { EmptyNote(problemText(it, t)) } }
         if (s.gateSearching && s.gateResults == null) items(2) { Skeleton(110.dp) }

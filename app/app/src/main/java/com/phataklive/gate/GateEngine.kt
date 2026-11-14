@@ -15,17 +15,25 @@ import com.phataklive.data.TimeSource
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
- * Works out when each rail gate closes and opens.
+ * Works out when each rail gate closes and opens, following how gatemen work (sources in README "Gate timing rule").
  *
- * Timing rule (sources in README "Gate timing rule"):
- *   - the gate CLOSES  [CLOSE_BEFORE_MIN] minutes before the train reaches it. Gatemen are told by the station
- *     master well ahead and, on non-interlocked gates, wait 5-10 min after closing before the train comes.
- *   - the gate OPENS   [OPEN_AFTER_MIN]  minutes after the train has passed it (tail-board check + station
- *     master's permission). Total ~13 min per train, in line with the 10-15 min gatemen report.
- *   - windows of trains that follow each other closely are merged (the gate stays down)
+ *   - The gate CLOSES when the station master sends the train towards it. Before taking off the departure signal
+ *     (or giving line clear) for a train, the station master gives the gateman the train's number and direction;
+ *     the gateman closes and locks the gate and reports back with his private number. So the gate goes down about
+ *     [CLOSE_AHEAD_MIN] min before the train leaves the station behind the gate, and stays down while the train
+ *     runs to it: the lead time is the run from that station to the gate, not a fixed number. A train that does
+ *     not stop at that station runs through on signals cleared while it approaches: [THROUGH_EXTRA_MIN] more.
+ *   - Gates within a station's limits work with that station's signals, which are not cleared more than 10 min
+ *     before a train is due: on the arrival side the lead is capped at [STATION_GATE_MAX_LEAD_MIN].
+ *   - The lead is kept within [MIN_LEAD_MIN]..[MAX_LEAD_MIN] (long sections, halts that are not block stations).
+ *   - The gate OPENS [OPEN_AFTER_MIN] min after the train has passed: tail board / tail lamp check, then the station
+ *     master's permission, given only when no other train is in the section. Windows of trains that follow each
+ *     other closely are merged: the gate stays down.
  *
  * When the train reaches the gate: the offline timetable has every station the train passes,
  * including ones where it does not stop, so the gate is placed on the track segment between two
@@ -35,12 +43,23 @@ import kotlin.math.roundToInt
 class GateEngine(private val db: PhatakDb) {
 
     companion object {
-        const val CLOSE_BEFORE_MIN = 10
+        /** private-number exchange + closing and locking the gate, before the train is sent off */
+        const val CLOSE_AHEAD_MIN = 3
+        /** a train that does not stop there runs through on signals cleared while it is still approaching */
+        const val THROUGH_EXTRA_MIN = 3
+        /** station signals are not taken off more than 10 min before the train is due (SR 3.36/2) */
+        const val STATION_GATE_MAX_LEAD_MIN = 10
+        const val MIN_LEAD_MIN = 4
+        const val MAX_LEAD_MIN = 15
+        /** lead used when the station the train comes from is unknown (live-only trains) */
+        const val TYPICAL_LEAD_MIN = 8
         const val OPEN_AFTER_MIN = 3
         /** "Closing soon" in the last minutes before the gate goes down */
         const val SOON_MIN = 5
         const val LOOKAHEAD_MIN = 180
-        private const val MERGE_GAP_SEC = 120
+        /** a gap shorter than this is not worth opening for: the gate stays down between the two trains */
+        private const val MERGE_GAP_SEC = 180
+        private const val STATION_LIMIT_KM = 0.6
         private const val MAX_OFF_TRACK_KM = 1.2
         val IST: ZoneId = ZoneId.of("Asia/Kolkata")
         /** "7:23 PM" in IST, built by hand: Android's formatter may put a narrow no-break space before PM. */
@@ -83,30 +102,43 @@ class GateEngine(private val db: PhatakDb) {
 
     // ---------------------------------------------------------------- gate placement
 
-    private data class Placement(val station: Station, val stop: StopTime, val gateAbsMin: Double, val offTrackKm: Double)
+    /** [leadMin]: how long before the train reaches the gate it goes down */
+    private data class Placement(val station: Station, val stop: StopTime, val gateAbsMin: Double, val offTrackKm: Double, val leadMin: Double)
 
     private fun place(gate: LatLng, s: Station, self: StopTime, prev: StopTime?, next: StopTime?): Placement? {
-        val dGate = Geo.km(gate, s.pos)
         // gate at this station: best possible fit, so the train is timed (and live-matched) here
-        if (dGate < 0.6) return Placement(s, self, (self.arrAbs + self.depAbs) / 2.0, 0.0)
+        val atStation = Geo.km(gate, s.pos) < STATION_LIMIT_KM
         var best: Placement? = null
+        var bestAlong = Double.NEGATIVE_INFINITY
         fun consider(other: StopTime?, forward: Boolean) {
             other ?: return
             val o = db.station(other.stationCode) ?: return
             val (t, off) = Geo.project(gate, s.pos, o.pos)
-            if (t < -0.05 || t > 1.05 || off > MAX_OFF_TRACK_KM) return
+            if (!atStation && (t < -0.05 || t > 1.05 || off > MAX_OFF_TRACK_KM)) return
             val tc = t.coerceIn(0.0, 1.0)
-            val abs = if (forward) {
+            val abs: Double
+            var lead: Double
+            if (forward) {
+                // the train leaves this station, passes the gate, then reaches [other]
                 var run = (other.arrAbs - self.depAbs).toDouble(); if (run < 0) run += 1440
-                self.depAbs + tc * run
+                abs = self.depAbs + tc * run
+                lead = tc * run + CLOSE_AHEAD_MIN + if (self.halt == 0 && prev != null) THROUGH_EXTRA_MIN else 0
+                if (Geo.km(gate, o.pos) < STATION_LIMIT_KM) lead = min(lead, STATION_GATE_MAX_LEAD_MIN.toDouble())
             } else {
+                // the train leaves [other], passes the gate, then reaches this station
                 var run = (self.arrAbs - other.depAbs).toDouble(); if (run < 0) run += 1440
-                self.arrAbs - tc * run
+                abs = self.arrAbs - tc * run
+                lead = (1 - tc) * run + CLOSE_AHEAD_MIN + if (other.halt == 0) THROUGH_EXTRA_MIN else 0
+                if (atStation) lead = min(lead, STATION_GATE_MAX_LEAD_MIN.toDouble())
             }
-            if (best == null || off < best!!.offTrackKm) best = Placement(s, self, abs, off)
+            val p = Placement(s, self, abs, if (atStation) 0.0 else off, lead.coerceIn(MIN_LEAD_MIN.toDouble(), MAX_LEAD_MIN.toDouble()))
+            // at a station, the side the gate lies on decides whether the train passes it arriving or leaving
+            if (atStation) { if (t > bestAlong) { best = p; bestAlong = t } }
+            else if (best == null || off < best!!.offTrackKm) best = p
         }
         consider(next, true)
         consider(prev, false)
+        if (best == null && atStation) best = Placement(s, self, (self.arrAbs + self.depAbs) / 2.0, 0.0, TYPICAL_LEAD_MIN.toDouble())
         return best
     }
 
@@ -115,7 +147,7 @@ class GateEngine(private val db: PhatakDb) {
     fun gateStatus(gate: Gate, user: LatLng, live: Map<String, LiveBoard>, nowSec: Long): GateStatus {
         val stations = db.nearbyStations(gate.pos, 10.0, limit = 4, passengerOnly = false)
         val nearest = db.nearbyStations(gate.pos, 10.0, limit = 1).firstOrNull()
-        val from = nowSec - (OPEN_AFTER_MIN + CLOSE_BEFORE_MIN) * 60L
+        val from = nowSec - (OPEN_AFTER_MIN + MAX_LEAD_MIN) * 60L
         val to = nowSec + LOOKAHEAD_MIN * 60L
 
         // best placement per train (a train is timed once per gate, from the station it fits best)
@@ -141,7 +173,7 @@ class GateEngine(private val db: PhatakDb) {
                     else -> 0L   // real-time and on time
                 }
                 val pass = sched + delaySec
-                val close = pass - CLOSE_BEFORE_MIN * 60
+                val close = pass - (p.leadMin * 60).roundToLong()
                 val open = pass + OPEN_AFTER_MIN * 60
                 if (open < from || close > to) continue
                 passes += GatePass(
@@ -160,7 +192,7 @@ class GateEngine(private val db: PhatakDb) {
             val board = live[nearest.code]
             val travelSec = (Geo.km(gate.pos, nearest.pos) / 40.0 * 3600).toLong()   // ~40 km/h near a station
             board?.rows?.filter { it.realtime && (it.trainNo == null || it.trainNo !in bestByTrain) }?.forEach { lv ->
-                val close = lv.estEpochSec - travelSec - CLOSE_BEFORE_MIN * 60
+                val close = lv.estEpochSec - travelSec - TYPICAL_LEAD_MIN * 60
                 val open = lv.estEpochSec + travelSec + OPEN_AFTER_MIN * 60
                 if (open < from || close > to) return@forEach
                 passes += GatePass(lv.trainNo ?: "—", lv.trainName, lv.estEpochSec, close, open, lv.delayMin,

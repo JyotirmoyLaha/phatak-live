@@ -102,19 +102,47 @@ class PhatakDb private constructor(private val db: SQLiteDatabase) {
         return TrainMatch(best.first, best.second, false, ranked.drop(1))
     }
 
+    /**
+     * Passenger stations whose name matches [query]: names starting with it first, then containing it, then the
+     * closest spellings ("guskra" -> Guskara, "bandle" -> Bandel), best first.
+     */
+    fun findStations(query: String, limit: Int = 3): List<Station> {
+        val q = query.trim().lowercase()
+        if (q.length < 3) return emptyList()
+        val all = passengerStations
+        // names starting with (then containing) what was typed, shortest first: the user may not have finished typing
+        val typed = all.filter { it.code.equals(q, true) || it.name.lowercase().startsWith(q) }.sortedBy { it.name.length } +
+            all.filter { !it.name.lowercase().startsWith(q) && it.name.lowercase().contains(q) }.sortedBy { it.name.length }
+        val typedCodes = typed.map { it.code }.toSet()
+        // closest spellings, for mistakes ("guskra" -> Guskara, "bandle" -> Bandel, "bali" -> Bally)
+        val fuzzy = all.asSequence().filter { it.code !in typedCodes }
+            .map { it to Fuzzy.nameScore(q, it.name) }.filter { it.second >= 0.6 }
+            .sortedByDescending { it.second }.map { it.first }.take(limit).toList()
+        // alternate the two lists, so a likely misspelling is not pushed out by longer names that merely start alike
+        val out = ArrayList<Station>()
+        val a = typed.iterator(); val b = fuzzy.iterator()
+        while (out.size < limit && (a.hasNext() || b.hasNext())) {
+            if (a.hasNext()) out += a.next()
+            if (out.size < limit && b.hasNext()) out += b.next()
+        }
+        return out
+    }
+
+    /** All passenger stations, read once (~10k rows) for spelling-tolerant name search. */
+    private val passengerStations: List<Station> by lazy {
+        db.rawQuery("select code, name, lat, lng from station where 1 = 1$PASSENGER_ONLY", null).use { c ->
+            buildList { while (c.moveToNext()) add(Station(c.getString(0), c.getString(1), LatLng(c.getDouble(2), c.getDouble(3)))) }
+        }
+    }
+
     /** Closest train names by character-trigram similarity; only clear matches (score >= 0.45), best first. */
     private fun fuzzyTrains(query: String, top: Int = 3): List<Pair<String, String>> {
-        fun grams(s: String): Set<String> {
-            val t = " " + s.lowercase().filter { it.isLetterOrDigit() || it == ' ' }.replace(Regex("\\s+"), " ") + " "
-            return (0 until (t.length - 2).coerceAtLeast(0)).map { t.substring(it, it + 3) }.toSet()
-        }
-        val q = grams(query)
+        val q = Fuzzy.grams(query)
         if (q.isEmpty()) return emptyList()
         val scored = ArrayList<Triple<Double, String, String>>()
         db.rawQuery("select no, name from train", null).use { c ->
             while (c.moveToNext()) {
-                val g = grams(c.getString(1))
-                val score = 2.0 * q.count { it in g } / (q.size + g.size)
+                val score = Fuzzy.similarity(q, Fuzzy.grams(c.getString(1)))
                 if (score >= 0.45) scored += Triple(score, c.getString(0), c.getString(1))
             }
         }

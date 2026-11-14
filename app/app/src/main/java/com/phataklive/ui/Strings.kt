@@ -70,8 +70,10 @@ class Strings(lang: String) {
 
     // search
     val searchGateTitle = t("Find a rail gate", "रेल फाटक खोजें", "রেল গেট খুঁজুন")
-    val searchGateSub = t("Type a gate number or place name: English, हिन्दी or বাংলা.", "फाटक नंबर या जगह का नाम लिखें: English, हिन्दी या বাংলা।",
-        "গেট নম্বর বা জায়গার নাম লিখুন: English, हिन्दी বা বাংলা।")
+    val searchGateSub = t("Any gate in India: type a gate, town or station name in English, हिन्दी or বাংলা. Small spelling mistakes are fine.",
+        "भारत का कोई भी फाटक: फाटक, शहर या स्टेशन का नाम English, हिन्दी या বাংলা में लिखें। छोटी स्पेलिंग गलती चलेगी।",
+        "ভারতের যেকোনো গেট: গেট, শহর বা স্টেশনের নাম English, हिन्दी বা বাংলায় লিখুন। ছোটখাটো বানান ভুল চলবে।")
+    fun gatesNearStation(st: String) = t("Gates near $st station", "$st स्टेशन के पास के फाटक", "$st স্টেশনের কাছের গেট")
     val gateHint = t("e.g. LC gate 24, or a town name", "जैसे LC गेट 24, या शहर का नाम", "যেমন LC গেট 24, বা শহরের নাম")
     val trainTitle = t("Live train status", "लाइव ट्रेन स्थिति", "লাইভ ট্রেনের অবস্থা")
     val trainSub = t("Train number gives the exact match; names work too.", "ट्रेन नंबर से सबसे सही नतीजा; नाम भी चलेगा।", "ট্রেন নম্বরে সবচেয়ে সঠিক ফল; নামও চলবে।")
@@ -120,13 +122,13 @@ class Strings(lang: String) {
 
     // info box
     val infoTitle = t("How gate times work", "फाटक का समय कैसे पता चलता है", "গেটের সময় কীভাবে জানা যায়")
-    val info1 = t("A gate usually closes about 10 minutes before a train arrives and opens about 3 minutes after it has passed.",
-        "फाटक आमतौर पर ट्रेन आने से करीब 10 मिनट पहले बंद होता है और ट्रेन निकलने के करीब 3 मिनट बाद खुलता है।",
-        "গেট সাধারণত ট্রেন আসার প্রায় ১০ মিনিট আগে বন্ধ হয় আর ট্রেন চলে যাওয়ার প্রায় ৩ মিনিট পরে খোলে।")
+    val info1 = t("A gate closes when the station master sends the train towards it, usually as the train leaves the station before the gate: about 4 to 15 minutes before it arrives. It opens about 3 minutes after the whole train has passed, if no other train is coming.",
+        "स्टेशन मास्टर जब ट्रेन को फाटक की ओर भेजते हैं, तब फाटक बंद होता है, आमतौर पर जब ट्रेन फाटक से पहले वाले स्टेशन से निकलती है: ट्रेन आने से करीब 4 से 15 मिनट पहले। पूरी ट्रेन निकलने के करीब 3 मिनट बाद फाटक खुलता है, अगर कोई दूसरी ट्रेन न आ रही हो।",
+        "স্টেশন মাস্টার যখন ট্রেনকে গেটের দিকে পাঠান, তখন গেট বন্ধ হয়, সাধারণত ট্রেন গেটের আগের স্টেশন ছাড়ার সময়: ট্রেন আসার প্রায় ৪ থেকে ১৫ মিনিট আগে। পুরো ট্রেন চলে যাওয়ার প্রায় ৩ মিনিট পরে গেট খোলে, যদি অন্য কোনো ট্রেন না আসে।")
     val info2 = t("LIVE means the time is checked with the train's live running. TIMETABLE means the normal schedule; it can change if the train is late.",
         "लाइव = ट्रेन की लाइव स्थिति से जाँचा गया समय। टाइमटेबल = सामान्य समय, ट्रेन लेट हो तो बदल सकता है।",
         "লাইভ = ট্রেনের লাইভ অবস্থা দেখে যাচাই করা সময়। টাইমটেবিল = সাধারণ সময়, ট্রেন দেরি করলে বদলাতে পারে।")
-    val info3 = t("These are estimates. Always follow the gate, the signals and the gateman.",
-        "ये अनुमानित समय हैं। हमेशा फाटक, सिग्नल और गेटमैन की बात मानें।",
-        "এগুলো আনুমানিক সময়। সবসময় গেট, সিগন্যাল আর গেটম্যানের কথা মানুন।")
+    val info3 = t("These are estimates, and goods trains are not shown, so a gate can also close for them. Always follow the gate, the signals and the gateman.",
+        "ये अनुमानित समय हैं। मालगाड़ियाँ इसमें नहीं दिखतीं, उनके लिए भी फाटक बंद हो सकता है। हमेशा फाटक, सिग्नल और गेटमैन की बात मानें।",
+        "এগুলো আনুমানিক সময়। মালগাড়ি এখানে দেখানো হয় না, তাদের জন্যও গেট বন্ধ হতে পারে। সবসময় গেট, সিগন্যাল আর গেটম্যানের কথা মানুন।")
 }

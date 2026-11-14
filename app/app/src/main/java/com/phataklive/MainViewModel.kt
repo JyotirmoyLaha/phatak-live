@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.phataklive.data.Fuzzy
 import com.phataklive.data.Gate
 import com.phataklive.data.GateStatus
 import com.phataklive.data.Geo
@@ -66,6 +67,7 @@ data class UiState(
     val gateSearching: Boolean = false,
     val gateResults: List<GateStatus>? = null,
     val gateProblem: Problem? = null,
+    val gateSuggestions: List<LiveSearch.Suggestion> = emptyList(),
     // train search
     val trainQuery: String = "",
     val trainSearching: Boolean = false,
@@ -90,8 +92,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var liveErrors: Map<String, String> = emptyMap()
     private var refreshJob: Job? = null
     private var gateJob: Job? = null
+    private var suggestJob: Job? = null
     private var trainJob: Job? = null
     @Volatile private var foreground = true
+
+    /** biases suggestions to India before the first location fix */
+    private val INDIA_CENTRE = LatLng(22.9, 79.0)
 
     /** First launch follows the phone's language: Hindi or Bengali phones start in that language. */
     private fun defaultLang() = when (Locale.getDefault().language) { "hi" -> "Hindi"; "bn" -> "Bengali"; else -> "English" }
@@ -224,33 +230,70 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setGateQuery(q: String) = _state.update { it.copy(gateQuery = q) }
 
+    /** Suggestions under the search box, refreshed while the user types (after a short pause). */
+    fun onGateTyping(q: String) {
+        suggestJob?.cancel()
+        if (q.trim().length < 3) {
+            _state.update { it.copy(gateSuggestions = emptyList()) }
+            return
+        }
+        suggestJob = viewModelScope.launch {
+            delay(350)
+            val from = _state.value.user ?: INDIA_CENTRE
+            val list = search.suggest(q, from)
+            _state.update { it.copy(gateSuggestions = list) }
+        }
+    }
+
     fun searchGate(query: String) {
         if (query.isBlank()) return
+        val q = query.trim()
+        runGateSearch(q) { user ->
+            val stations = withContext(Dispatchers.IO) { db.findStations(Fuzzy.placePart(q).ifBlank { q }, 2) }
+            val res = search.run(search.gatePlan(q, stations), user, 30.0)
+            search.rank(search.relevant(res.gates, q, stations), q, user).take(6) to res.live
+        }
+    }
+
+    fun pickSuggestion(s: LiveSearch.Suggestion) = when (s) {
+        is LiveSearch.Suggestion.GatePlace -> runGateSearch(s.gate.name) { listOf(s.gate) to emptyMap() }
+        is LiveSearch.Suggestion.NearStation -> runGateSearch(s.station.name) { user ->
+            val res = search.run(search.stationGatePlan(s.station), user, 30.0)
+            res.gates.sortedBy { Geo.km(s.station.pos, it.pos) }.take(6) to res.live
+        }
+    }
+
+    /** Runs [find] for the gates to show, then fetches live trains near them and works out each gate's status. */
+    private fun runGateSearch(label: String, find: suspend (LatLng) -> Pair<List<Gate>, Map<String, GateEngine.LiveBoard>>) {
         val user = _state.value.user ?: run {
             _state.update { it.copy(gateProblem = Problem.WaitingForLocation) }
             return
         }
+        suggestJob?.cancel()
         gateJob?.cancel()
         gateJob = viewModelScope.launch {
-            _state.update { it.copy(gateSearching = true, gateResults = null, gateProblem = null) }
-            val res = search.run(search.gatePlan(query), user, 30.0)
-            val t = now()
-            val nearestFirst = res.gates.sortedBy { Geo.km(user, it.pos) }.take(5)
+            _state.update { it.copy(gateQuery = label, gateSuggestions = emptyList(), gateSearching = true, gateResults = null, gateProblem = null) }
+            val (gates, foundLive) = find(user)
             // live data for the stations next to the found gates
-            val stationsNear = nearestFirst.mapNotNull { g -> db.nearbyStations(g.pos, 10.0, 1).firstOrNull() }.distinctBy { it.code }
-            val extra = search.run(stationsNear.filter { it.code !in live }.take(3).map { LiveSearch.Call.StationLive(it.name, it.code) }, user, 30.0).live
-            val all = live + res.live + extra
-            val found = withContext(Dispatchers.Default) { nearestFirst.map { engine.gateStatus(it, user, all, t) } }
+            val stationsNear = withContext(Dispatchers.IO) {
+                gates.mapNotNull { g -> db.nearbyStations(g.pos, 10.0, 1).firstOrNull() }.distinctBy { it.code }
+            }
+            val missing = stationsNear.filter { it.code !in live && it.code !in foundLive }.take(3)
+            val extra = search.run(missing.map { LiveSearch.Call.StationLive(it.name, it.code) }, user, 30.0).live
+            val all = live + foundLive + extra
+            val t = now()
+            val found = withContext(Dispatchers.Default) { gates.map { engine.gateStatus(it, user, all, t) } }
             _state.update {
-                it.copy(gateSearching = false, gateResults = found, gateProblem = if (found.isEmpty()) Problem.NoGateFound(query.trim()) else null)
+                it.copy(gateSearching = false, gateResults = found, gateProblem = if (found.isEmpty()) Problem.NoGateFound(label) else null)
             }
         }
     }
 
     /** Clears the search box's results, and stops a search still running so its results can't pop back in. */
     fun clearGateSearch() {
+        suggestJob?.cancel()
         gateJob?.cancel()
-        _state.update { it.copy(gateResults = null, gateQuery = "", gateProblem = null, gateSearching = false) }
+        _state.update { it.copy(gateResults = null, gateQuery = "", gateProblem = null, gateSearching = false, gateSuggestions = emptyList()) }
     }
 
     // ------------------------------------------------------------------ train search
