@@ -5,6 +5,7 @@ import com.phataklive.data.GatePass
 import com.phataklive.data.Geo
 import com.phataklive.data.LatLng
 import com.phataklive.data.PhatakDb
+import com.phataklive.data.RailLines
 import com.phataklive.data.Station
 import com.phataklive.data.TimeSource
 import com.phataklive.gate.GateEngine
@@ -28,7 +29,11 @@ enum class CrossingKind { GATE, OVERBRIDGE, UNDERPASS, FOOTBRIDGE }
  * A place where a road crosses the railway, found from Google's road and rail lines (not from names).
  * [named]: [name] is the place's own name on Google Maps; otherwise [name] is the nearest station ("crossing near …").
  */
-data class Crossing(val kind: CrossingKind, val name: String, val named: Boolean, val pos: LatLng)
+data class Crossing(
+    val kind: CrossingKind, val name: String, val named: Boolean, val pos: LatLng,
+    /** the road crossing the railway there, from Google's turn-by-turn step ("GT Rd"): tells unnamed crossings apart */
+    val road: String? = null,
+)
 
 /** A crossing further along the same road, after the one the user chooses ([toSec]: from the start, Google's time share). */
 data class Later(val crossing: Crossing, val toSec: Int)
@@ -132,6 +137,8 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         private const val NO_GATE_KM = 0.3
         /** a start closer than this to a railway line is on it (a gate, a station): which side is unknown */
         private const val ON_RAILWAY_KM = 0.06
+        /** a route that gets this far from another somewhere is on another road */
+        private const val OTHER_ROAD_KM = 0.3
         /** crossings this close are one crossing area: only one way through it is shown */
         private const val SAME_AREA_KM = 0.5
         /** crossings with the same name closer than this: only the faster way is shown */
@@ -142,8 +149,6 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         const val MAX_TRIP_KM = 80.0
         private const val MAX_SECTIONS = 30
 
-        /** Railway lines by section, kept for the app's lifetime (they don't move). */
-        private val railCache = ConcurrentHashMap<String, List<LatLng>>()
 
         private val bridgeWords = Regex(
             "(over\\s*-?\\s*bridge|\\bR\\.?\\s?O\\.?\\s?B\\b|flyover|fly\\s*over|under\\s*-?\\s*pass|\\bR\\.?\\s?U\\.?\\s?B\\b|subway|under\\s*bridge|" +
@@ -168,6 +173,21 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
                 else -> CrossingKind.OVERBRIDGE
             }
         }
+
+        /** a road named as passing over / under the railway in a turn-by-turn step */
+        private val stepOver = Regex("""(flyover|fly\s*over|overpass|over\s*-?\s*bridge|\bR\.?\s?O\.?\s?B\b|rail(way)?\s*bridge)""", RegexOption.IGNORE_CASE)
+        private val stepUnder = Regex("""(underpass|under\s*pass|subway|\bR\.?\s?U\.?\s?B\b|under\s*bridge)""", RegexOption.IGNORE_CASE)
+
+        /** The road a step names: "Continue onto Shahdara Flyover" -> "Shahdara Flyover" (after onto / on / via). */
+        /** Any road a step names: "Turn right onto GT Rd" -> "GT Rd"; null for "Head south" or a roundabout. */
+        internal fun roadName(text: String): String? =
+            Regex("""(?:onto|on|along|via)\s+(?:the\s+)?(.+?)(?:\s+(?:toward|towards|for|to)\b.*)?$""", RegexOption.IGNORE_CASE)
+                .find(text.lineSequence().first())?.groupValues?.get(1)?.trim()
+                ?.takeIf { it.length in 2..60 && !it.contains("roundabout", ignoreCase = true) && it.any { c -> c.isLetter() } }
+
+        internal fun stepRoad(text: String): String? =
+            Regex("""(?:onto|on|via|take)\s+(?:the\s+)?(.+?)(?:\s+(?:toward|towards|for|to)\b.*)?$""", RegexOption.IGNORE_CASE)
+                .find(text.lineSequence().first())?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() && (stepOver.containsMatchIn(it) || stepUnder.containsMatchIn(it)) }
 
         private val bridgeQueries = listOf("railway over bridge", "railway underpass", "RUB railway subway")
 
@@ -206,13 +226,23 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
          * old gate); anything else is an unnamed gate, because a gate that may close is the safe assumption.
          */
         internal fun classify(pos: LatLng, gates: List<Pair<String, LatLng>>, bridges: List<Triple<String, LatLng, CrossingKind>>,
-                              nearStation: String?): Crossing {
+                              nearStation: String?, stepText: String? = null): Crossing {
             val g = gates.filter { Geo.km(it.second, pos) <= GATE_NAME_KM }.minByOrNull { Geo.km(it.second, pos) }
             if (g != null) return Crossing(CrossingKind.GATE, g.first, true, pos)
             val gateNear = gates.any { Geo.km(it.second, pos) <= NO_GATE_KM }
             val b = bridges.filter { Geo.km(it.second, pos) <= BRIDGE_NAME_KM }.minByOrNull { Geo.km(it.second, pos) }
             if (b != null && !gateNear) return Crossing(b.third, b.first, true, pos)
-            return Crossing(CrossingKind.GATE, nearStation ?: "", false, pos)
+            // Google's own turn-by-turn step at the crossing names the road: "Continue onto Shahdara Flyover"
+            if (!gateNear && stepText != null) {
+                val road = stepRoad(stepText)
+                val kind = when {
+                    stepUnder.containsMatchIn(stepText) -> CrossingKind.UNDERPASS
+                    stepOver.containsMatchIn(stepText) -> CrossingKind.OVERBRIDGE
+                    else -> null
+                }
+                if (kind != null) return Crossing(kind, road ?: nearStation ?: "", road != null, pos)
+            }
+            return Crossing(CrossingKind.GATE, nearStation ?: "", false, pos, stepText?.let { roadName(it) })
         }
     }
 
@@ -261,8 +291,8 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         var fallback = false
         val rails = sections.map { (a, b, _) ->
             async(Dispatchers.IO) {
-                val key = "${a.code}|${b.code}"
-                railCache[key] ?: google { GoogleDirections.trainRoutes(a.pos, b.pos) }?.let { pickRailLine(it, a.pos, b.pos) }?.also { railCache[key] = it }
+                RailLines.get(a.code, b.code) ?: google { GoogleDirections.trainRoutes(a.pos, b.pos) }?.let { pickRailLine(it, a.pos, b.pos) }
+                    ?.also { RailLines.put(a.code, b.code, it) }
             } to listOf(a.pos, b.pos)
         }.map { (job, straight) -> job.await() ?: straight.also { fallback = true } }
 
@@ -302,15 +332,20 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         val first = ownHits.first().pos
         val probes = probePoints(rails) { Geo.km(it, first) <= PROBE_NEAR_KM && Geo.km(it, first) > 0.1 && detour(it) <= maxDetour }
         val candidates = ArrayList<Way>()
+        // a way is another way if it crosses somewhere else, or crosses at the same place on a different road
+        fun sameWay(a: Way, hits: List<Lines.Hit>, line: List<LatLng>) =
+            Geo.km(a.hits[0].pos, hits[0].pos) < 0.08 && Lines.deviationKm(line, a.route.line) < OTHER_ROAD_KM
         fun consider(r: GoogleDirections.Route) {
             val hits = Lines.crossings(r.line, rails)
-            // same number of crossings as Google's own road (no detour across and back), and a different first one
-            if (hits.size != ownHits.size || Geo.km(hits[0].pos, first) < 0.08) return
-            val same = candidates.indexOfFirst { Geo.km(it.hits[0].pos, hits[0].pos) < 0.08 }
+            // same number of crossings as Google's own road (no detour across and back)
+            if (hits.size != ownHits.size) return
+            // Google's own way again
+            if (Geo.km(hits[0].pos, first) < 0.08 && Lines.deviationKm(r.line, ownRoute.line) < OTHER_ROAD_KM) return
+            val same = candidates.indexOfFirst { sameWay(it, hits, r.line) }
             if (same < 0) candidates += Way(r, hits, null)
             else if (r.durationSec < candidates[same].route.durationSec) candidates[same] = Way(r, hits, null)
         }
-        own.drop(1).forEach { consider(it) }   // Google's alternatives need a stop too: Navigate takes the first route
+        own.drop(1).forEach { consider(it) }   // Google's other roads: they need a stop too, Navigate takes the first route
         probes.map { p -> async(Dispatchers.IO) { google { GoogleDirections.routes(listOf(o, p, d), mode).firstOrNull() } } }
             .awaitAll().filterNotNull().filter { it.line.size >= 2 }.forEach { consider(it) }
 
@@ -319,11 +354,18 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
         val others = candidates.filter { it.route.durationSec <= limit }.sortedBy { it.route.durationSec }.take(MAX_OTHER_WAYS)
             .map { w ->
                 async(Dispatchers.IO) {
-                    val stop = Lines.pointAt(w.route.line, w.hits[0].atKm + STOP_AFTER_KM)
+                    // the stop that makes Google Maps take this way: just past its crossing when it crosses elsewhere,
+                    // else on the stretch of road where it leaves Google's own route
+                    val sameCrossing = Geo.km(w.hits[0].pos, first) < 0.08
+                    val stop = if (!sameCrossing) Lines.pointAt(w.route.line, w.hits[0].atKm + STOP_AFTER_KM)
+                        else Lines.farthestFrom(w.route.line, ownRoute.line)
                     val r = google { GoogleDirections.routes(listOf(o, stop, d), mode).firstOrNull() } ?: return@async null
                     val hits = Lines.crossings(r.line, rails)
-                    // Google Maps must cross first exactly here, and as many times as Google's own road
-                    if (hits.size != ownHits.size || Geo.km(hits[0].pos, w.hits[0].pos) >= 0.08) null else Way(r, hits, stop)
+                    // Google Maps must cross first exactly here, as many times as Google's own road, and (same crossing)
+                    // still on the other road
+                    val ok = hits.size == ownHits.size && Geo.km(hits[0].pos, w.hits[0].pos) < 0.08 &&
+                        (!sameCrossing || Lines.deviationKm(r.line, ownRoute.line) >= OTHER_ROAD_KM)
+                    if (ok) Way(r, hits, stop) else null
                 }
             }.awaitAll().filterNotNull()
         val ways = listOf(Way(ownRoute, ownHits, null)) + others
@@ -334,7 +376,8 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
             val nearStation = db.nearbyStations(p.pos, 1.5, 1, passengerOnly = false).isNotEmpty()
             bridgeKind(p.name, p.categories, nearStation)?.takeIf { it != CrossingKind.FOOTBRIDGE || mode == Mode.WALK }?.let { Triple(p.name, p.pos, it) }
         }
-        fun crossingAt(pos: LatLng) = classify(pos, gateNames, bridgeNames, db.nearbyStations(pos, 5.0, 1).firstOrNull()?.name)
+        fun crossingAt(pos: LatLng, r: GoogleDirections.Route, atKm: Double) =
+            classify(pos, gateNames, bridgeNames, db.nearbyStations(pos, 5.0, 1).firstOrNull()?.name, r.stepAt(atKm))
 
         // time to the first gate: Google's route from the start to just before it; later ones by share of the trip
         val legs = ways.map { w ->
@@ -343,24 +386,29 @@ class CrossingPlanner(private val db: PhatakDb, private val engine: GateEngine) 
                 val len = Lines.length(r.line).coerceAtLeast(1e-6)
                 fun share(km: Double) = (r.durationSec * km / len).toInt().coerceIn(0, r.durationSec)
                 val h = w.hits[0]
-                val c = crossingAt(h.pos)
+                val c = crossingAt(h.pos, r, h.atKm)
                 val toSec = when {
                     Geo.km(o, h.pos) < AT_KM -> 0
                     c.kind != CrossingKind.GATE -> share(h.atKm)
                     else -> google { GoogleDirections.routes(listOf(o, Lines.pointAt(r.line, h.atKm - 0.02)), mode).firstOrNull()?.durationSec } ?: share(h.atKm)
                 }
                 Leg(c, toSec.coerceIn(0, r.durationSec), r.durationSec, r.distanceM, w.stop, r.line,
-                    w.hits.drop(1).map { Later(crossingAt(it.pos), share(it.atKm)) }, r.summary?.takeIf { it.isNotBlank() })
+                    w.hits.drop(1).map { Later(crossingAt(it.pos, r, it.atKm), share(it.atKm)) }, r.summary?.takeIf { it.isNotBlank() })
             }
         }.awaitAll()
             // one crossing area, one way: crossings closer than SAME_AREA_KM (two tracks, two roads at the same spot)
             // would show twice under the same name; Google's own way first, then the fastest, are kept
             .sortedWith(compareBy({ if (it.own) 0 else 1 }, { it.viaSec }))
             .fold(ArrayList<Leg>()) { kept, l ->
-                // also: two ways under the same name nearby ("Rail crossing near X" twice) confuse more than they help
-                if (kept.none {
-                        Geo.km(it.crossing.pos, l.crossing.pos) < SAME_AREA_KM ||
-                            (it.crossing.name == l.crossing.name && it.crossing.named == l.crossing.named && Geo.km(it.crossing.pos, l.crossing.pos) < SAME_NAME_KM)
+                if (kept.none { k ->
+                        val d = Geo.km(k.crossing.pos, l.crossing.pos)
+                        when {
+                            // the same crossing: a duplicate unless it is really another road
+                            d < 0.08 -> Lines.deviationKm(l.line, k.line) < OTHER_ROAD_KM
+                            // two crossings in one area, or two under the same name nearby ("near X" twice), confuse
+                            d < SAME_AREA_KM -> true
+                            else -> k.crossing.name == l.crossing.name && k.crossing.named == l.crossing.named && d < SAME_NAME_KM
+                        }
                     }) kept += l
                 kept
             }

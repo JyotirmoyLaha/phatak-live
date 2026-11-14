@@ -43,7 +43,8 @@ object Trip {
     data class State(
         val plan: Plan,
         /** the crossing the user set off for */
-        val crossing: Crossing,
+        /** the way the user set off on (two ways can share a crossing on different roads) */
+        val leg: Leg,
         val options: List<Option>,
         val here: LatLng?,
         val passed: Boolean,
@@ -52,7 +53,8 @@ object Trip {
         /** which crossing of the chosen way is next (0 = the first); the ones before it are behind */
         val nextIdx: Int = 0,
     ) {
-        val chosen: Option? get() = options.firstOrNull { it.leg.crossing == crossing }
+        val crossing: Crossing get() = leg.crossing
+        val chosen: Option? get() = options.firstOrNull { it.leg == leg }
         /** the crossing ahead, with what you're likely to find there */
         val ahead: AtCrossing? get() = chosen?.let { o ->
             if (nextIdx == 0) AtCrossing(o.leg.crossing, o.etaSec, o.waitSec, o.at, o.opensAt) else o.later.getOrNull(nextIdx - 1)
@@ -65,9 +67,9 @@ object Trip {
     internal fun update(s: State?) { _state.value = s }
 
     /** Starts watching the trip through [crossing]: an ongoing notification, updated from GPS until the crossing is behind. */
-    fun start(ctx: Context, plan: Plan, crossing: Crossing, options: List<Option>) {
+    fun start(ctx: Context, plan: Plan, leg: Leg, options: List<Option>) {
         val now = System.currentTimeMillis() / 1000
-        _state.value = State(plan, crossing, options, null, false, now, now)
+        _state.value = State(plan, leg, options, null, false, now, now)
         ContextCompat.startForegroundService(ctx, Intent(ctx, TripService::class.java))
     }
 
@@ -171,7 +173,7 @@ class TripService : Service() {
         if (now - plan.liveFetchedSec >= LIVE_EVERY_SEC) plan = runCatching { planner.refreshLive(plan) }.getOrDefault(plan.copy(liveFetchedSec = now))
         val pos = here
         val options = planner.evaluate(plan, pos, now)
-        val crossings = options.firstOrNull { it.leg.crossing == st.crossing }?.leg?.crossings ?: listOf(st.crossing)
+        val crossings = st.leg.crossings
         var idx = st.nextIdx
         if (pos != null && idx < crossings.size) {
             // came close to the crossing ahead and then moved away from it: it is behind, watch the next one

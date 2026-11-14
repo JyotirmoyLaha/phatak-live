@@ -108,6 +108,7 @@ private fun waitMin(sec: Int) = (sec + 59) / 60
 /** A crossing's name for people: its name on the map, or "Rail crossing near <station>". */
 fun Crossing.label(t: Strings): String = when {
     named -> name
+    road != null -> t.crossingOn(road)
     name.isNotEmpty() -> t.crossingNear(name)
     else -> t.railCrossing
 }
@@ -143,7 +144,9 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     // while a trip of this plan runs, its live-position ranking is the freshest
     val tripOfPlan = trip?.takeIf { plan != null && it.plan.createdSec == plan.createdSec }
     val options = tripOfPlan?.options?.takeIf { it.isNotEmpty() } ?: s.routeOptions
-    var mapCrossing by remember { mutableStateOf<Crossing?>(null) }
+    // the way shown on the map / waiting for the notification permission: a way, never just its crossing,
+    // because two ways can cross at the same place on different roads
+    var mapLeg by remember { mutableStateOf<Leg?>(null) }
     // what is typed in the two boxes; a picked place fills its box
     var fromText by rememberSaveable { mutableStateOf(s.routeFrom?.name ?: "") }
     var toText by rememberSaveable { mutableStateOf(s.routeTo?.name ?: "") }
@@ -155,12 +158,12 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
     LaunchedEffect(focusFrom) { if (focusFrom) { runCatching { fromFocus.requestFocus() }; focusFrom = false } }
     fun useMyLocation() { fromIsMe = true; fromText = ""; focus.clearFocus(); vm.pickRoutePlace(RouteField.FROM, null) }
     LaunchedEffect(s.routeTo) { s.routeTo?.let { toText = it.name } }
-    var pending by remember { mutableStateOf<Crossing?>(null) }
+    var pending by remember { mutableStateOf<Leg?>(null) }
 
-    fun go(crossing: Crossing) {
+    fun go(leg: Leg) {
         val p = s.routePlan ?: return
-        val leg = p.legs.firstOrNull { it.crossing == crossing } ?: return
-        Trip.start(ctx, p, crossing, options)
+        if (leg !in p.legs) return
+        Trip.start(ctx, p, leg, options)
         openNavigation(ctx, p, leg)
     }
     // Android 13+: notifications need permission; asked once, when the first trip starts
@@ -169,12 +172,12 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
         pending?.let { go(it) }
         pending = null
     }
-    fun navigate(crossing: Crossing) {
+    fun navigate(leg: Leg) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            pending = crossing
+            pending = leg
             askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else go(crossing)
+        } else go(leg)
     }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = listPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -240,10 +243,10 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
             if (plan.sameSide) item { EmptyNote(t.sameSide) }
             else if (plan.legs.isEmpty() && !plan.railsChecked) item { EmptyNote(t.railsNotChecked) }
             // a few ways only: the best, and up to two others
-            items(options.take(3), key = { "r" + it.leg.crossing.pos }) { o ->
+            items(options.take(3).withIndex().toList(), key = { (i, _) -> "way$i" }) { (_, o) ->
                 OptionCard(o, best = o === options.first(), t = t,
-                    tripOn = tripOfPlan?.crossing == o.leg.crossing,
-                    onNavigate = { navigate(o.leg.crossing) }, onMap = { mapCrossing = o.leg.crossing })
+                    tripOn = tripOfPlan?.leg == o.leg,
+                    onNavigate = { navigate(o.leg) }, onMap = { mapLeg = o.leg })
             }
             if (options.isNotEmpty()) item {
                 Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.Top) {
@@ -255,15 +258,14 @@ fun RouteTab(s: UiState, t: Strings, vm: MainViewModel) {
         }
     }
 
-    val shown = mapCrossing
-    val shownLeg = plan?.legs?.firstOrNull { it.crossing == shown }
+    val shownLeg = mapLeg?.takeIf { plan != null && it in plan.legs }
     val navBar = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    if (shown != null && plan != null && shownLeg != null) {
-        val o = options.firstOrNull { it.leg.crossing == shown }
+    if (plan != null && shownLeg != null) {
+        val o = options.firstOrNull { it.leg == shownLeg }
         RouteMapDialog(
             plan = plan, leg = shownLeg, option = o, t = t, bottomInset = navBar,
-            onNavigate = { mapCrossing = null; navigate(shown) },
-            onClose = { mapCrossing = null },
+            onNavigate = { mapLeg = null; navigate(shownLeg) },
+            onClose = { mapLeg = null },
         ) { if (o != null) { StatusLine(o, t); LaterLines(o, t) } }
     }
 }
@@ -290,10 +292,10 @@ private fun SafetyNotice(t: Strings, onAccept: () -> Unit) {
 
 /** The crossings after the first one on the same road, each with what you're likely to find there. */
 @Composable
-private fun LaterLines(o: Option, t: Strings) {
+private fun LaterLines(o: Option, t: Strings, header: Boolean = true) {
     if (o.later.isEmpty()) return
     val c = Phatak.c
-    Text(t.alsoOnTheWay, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
+    if (header) Text(t.alsoOnTheWay, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
     o.later.forEach { l ->
         val col = if (l.at == AtArrival.CLOSED) c.closed else c.open
         val text = when (l.at) {
@@ -306,7 +308,8 @@ private fun LaterLines(o: Option, t: Strings) {
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(l.crossing.label(t), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text, style = MaterialTheme.typography.bodySmall, color = col)
+                // the time you reach it: crossings on one road still read apart, in order
+                Text("~${GateEngine.fmt(l.etaSec)} · $text", style = MaterialTheme.typography.bodySmall, color = col)
             }
         }
     }
@@ -464,26 +467,37 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
     val cr = o.leg.crossing
     GlassCard(Modifier.fillMaxWidth(), radius = if (best) 26.dp else 22.dp, tint = if (best) col else null) {
         Column(Modifier.padding(16.dp)) {
+            // the way first ("via SH 14"), then the railway crossings on it
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(col.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                    Icon(kindIcon(cr.kind), null, tint = col)
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.AltRoute, null, tint = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(cr.label(t), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    // "Rail gate · via NH114 and Shibda Rd": the road tells two ways apart
-                    Text(listOfNotNull(kindLabel(cr.kind, t), o.leg.road?.let { t.via(it) }).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(o.leg.road?.let { t.via(it) } ?: cr.label(t), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("%.1f km".format(o.leg.viaM / 1000.0), style = MaterialTheme.typography.bodySmall, color = c.muted)
                 }
                 if (best) Text(t.best, color = Color(0xFF1A1300), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black,
                     modifier = Modifier.clip(RoundedCornerShape(50)).background(c.amber).padding(horizontal = 10.dp, vertical = 4.dp))
             }
             Text(t.total(roundMin(o.totalSec)), style = if (best) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-            Spacer(Modifier.height(4.dp))
-            StatusLine(o, t)
-            Text(t.reachIn(roundMin(o.toCrossingSec), GateEngine.fmt(o.etaSec)), style = MaterialTheme.typography.bodySmall, color = c.muted,
-                modifier = Modifier.padding(top = 4.dp))
+            Text(t.crossingsOnWay, style = MaterialTheme.typography.labelMedium, color = c.muted, modifier = Modifier.padding(top = 10.dp))
+            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(col.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                    Icon(kindIcon(cr.kind), null, tint = col, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(cr.label(t), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(kindLabel(cr.kind, t), style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    Spacer(Modifier.height(2.dp))
+                    StatusLine(o, t)
+                    Text(t.reachIn(roundMin(o.toCrossingSec), GateEngine.fmt(o.etaSec)), style = MaterialTheme.typography.bodySmall, color = c.muted,
+                        modifier = Modifier.padding(top = 2.dp))
+                }
+            }
             if (o.googleWay || (cr.kind == CrossingKind.GATE && o.trains.isNotEmpty()) || tripOn) {
                 FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (tripOn) Pill(t.tripAlertsOn, c.amber, Icons.Rounded.NotificationsActive)
@@ -492,7 +506,7 @@ private fun OptionCard(o: Option, best: Boolean, t: Strings, tripOn: Boolean, on
                 }
             }
             if (o.at == AtArrival.CLOSED) o.trains.take(2).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
-            LaterLines(o, t)
+            LaterLines(o, t, header = false)
             // Google Maps shows our stop just past the crossing as a stop: say so, so nobody pulls over there
             if (o.leg.navStop != null) Text(t.navStopNote, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

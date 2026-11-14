@@ -153,10 +153,10 @@ class Strings(lang: String) {
     val done = t("Done", "ठीक है", "ঠিক আছে")
 
     // route: best way across the railway
-    val routeTitle = t("Best crossing", "पटरी पार करने का सबसे अच्छा रास्ता", "লাইন পার হওয়ার সেরা পথ")
-    val routeSub = t("Where are you going? Phatak Live compares the rail gates, overbridges and underpasses on the way, with the wait at each gate at the minute you get there.",
-        "कहाँ जा रहे हैं? Phatak Live रास्ते के रेल फाटक, ओवरब्रिज और अंडरपास की तुलना करता है, और बताता है कि आपके पहुँचने के समय हर फाटक पर कितना इंतज़ार होगा।",
-        "কোথায় যাচ্ছেন? Phatak Live পথের রেল গেট, ওভারব্রিজ আর আন্ডারপাস মিলিয়ে দেখে, আর আপনি যখন পৌঁছাবেন তখন প্রতিটি গেটে কত অপেক্ষা হবে তা জানায়।")
+    val routeTitle = t("Fastest way across the railway", "पटरी पार करने का सबसे तेज़ रास्ता", "লাইন পার হওয়ার দ্রুততম পথ")
+    val routeSub = t("Where are you going? Phatak Live compares the roads that take you there, with the likely wait at every rail gate on each, at the minute you get there.",
+        "कहाँ जा रहे हैं? Phatak Live वहाँ पहुँचने के रास्तों की तुलना करता है, और बताता है कि आपके पहुँचने के समय हर रास्ते के रेल फाटक पर कितना इंतज़ार हो सकता है।",
+        "কোথায় যাচ্ছেন? Phatak Live সেখানে যাওয়ার পথগুলো মিলিয়ে দেখে, আর আপনি যখন পৌঁছাবেন তখন প্রতিটি পথের রেল গেটে কত অপেক্ষা হতে পারে তা জানায়।")
     val from = t("From", "कहाँ से", "কোথা থেকে")
     val to = t("To", "कहाँ तक", "কোথায়")
     val myLocation = t("My location", "मेरी लोकेशन", "আমার লোকেশন")
@@ -191,6 +191,7 @@ class Strings(lang: String) {
         "पहुँचने पर संभवतः बंद मिलेगा: ~${mins(m)} इंतज़ार, ~$time पर खुलेगा",
         "পৌঁছালে সম্ভবত বন্ধ পাবেন: ~${mins(m)} অপেক্ষা, ~$time-এ খুলবে")
     fun closedShort(m: Int) = t("likely closed, wait ~${mins(m)}", "संभवतः बंद, ~${mins(m)} इंतज़ार", "সম্ভবত বন্ধ, ~${mins(m)} অপেক্ষা")
+    fun crossingOn(road: String) = t("Rail crossing on $road", "$road पर रेल क्रॉसिंग", "$road-এ রেল ক্রসিং")
     fun crossingNear(st: String) = t("Rail crossing near $st", "$st के पास रेल क्रॉसिंग", "$st-এর কাছে রেল ক্রসিং")
     fun via(road: String) = t("via $road", "$road से", "$road দিয়ে")
     val railCrossing = t("Rail crossing", "रेल क्रॉसिंग", "রেল ক্রসিং")
@@ -238,6 +239,7 @@ class Strings(lang: String) {
     val railsNotChecked = t("Couldn't check the railway on this trip right now. Pull down to try again.",
         "अभी इस यात्रा की रेल लाइन नहीं जाँच पाए। फिर से कोशिश करने के लिए नीचे खींचें।",
         "এখন এই যাত্রার রেল লাইন দেখা গেল না। আবার চেষ্টা করতে নিচে টানুন।")
+    val crossingsOnWay = t("Railway crossings on this way", "इस रास्ते पर रेल क्रॉसिंग", "এই পথে রেল ক্রসিং")
     val alsoOnTheWay = t("Also on the way", "रास्ते में और भी", "পথে আরও")
     val mapDrawnNote = t("Simple map from Google Maps' road and railway lines", "Google Maps की सड़क और रेल लाइन से बना सादा नक्शा",
         "Google Maps-এর রাস্তা আর রেল লাইন থেকে আঁকা সহজ ম্যাপ")

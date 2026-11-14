@@ -22,7 +22,16 @@ object GoogleDirections {
     /** Public transport (trains): its route between two stations follows the railway. */
     private const val TRANSIT = 3
 
-    data class Route(val distanceM: Int, val durationSec: Int, val summary: String?, val line: List<LatLng>)
+    /** One turn-by-turn step: its instruction ("Continue onto Shahdara Flyover"), where it starts along the route, its length. */
+    data class Step(val text: String, val startM: Int, val lengthM: Int)
+
+    data class Route(val distanceM: Int, val durationSec: Int, val summary: String?, val line: List<LatLng>, val steps: List<Step> = emptyList()) {
+        /** The instruction of the step the route is on [km] from its start. */
+        fun stepAt(km: Double): String? {
+            val m = km * 1000
+            return steps.lastOrNull { it.startM <= m }?.takeIf { m <= it.startM + it.lengthM + 30 }?.text
+        }
+    }
 
     // the directions link is only in the desktop page
     private const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -89,8 +98,26 @@ object GoogleDirections {
             val head = list.at(k, 0) as? JSONArray ?: return@mapNotNull null
             val m = (head.at(2, 0) as? Number)?.toInt() ?: return@mapNotNull null
             val s = (head.at(3, 0) as? Number)?.toInt() ?: return@mapNotNull null
-            Route(m, s, head.at(1) as? String, decodeLine(lines?.optJSONArray(k)))
+            Route(m, s, head.at(1) as? String, decodeLine(lines?.optJSONArray(k)), steps(list.optJSONArray(k)))
         }
+    }
+
+    /** Turn-by-turn steps of one route row: arrays whose second item is the "<step>" instruction and third [metres, …]. */
+    internal fun steps(route: JSONArray?): List<Step> {
+        val raw = ArrayList<Pair<String, Int>>()
+        fun walk(n: Any?) {
+            val a = n as? JSONArray ?: return
+            val s = a.opt(1) as? String
+            if (a.length() > 7 && s != null && s.startsWith("<step")) {
+                val text = android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                raw += text to ((a.at(2, 0) as? Number)?.toInt() ?: 0)
+                return
+            }
+            for (i in 0 until a.length()) walk(a.opt(i))
+        }
+        runCatching { walk(route) }
+        var at = 0
+        return raw.map { (text, len) -> Step(text, at, len).also { at += len } }
     }
 
     /** [lat deltas, lng deltas, ...] in 1e-7 degrees -> points; empty when the layout is not as expected. */

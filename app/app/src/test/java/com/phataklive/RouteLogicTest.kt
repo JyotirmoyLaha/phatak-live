@@ -154,6 +154,57 @@ class RouteLogicTest {
         assertEquals(true, Lines.distanceKm(LatLng(23.51, 87.7336), listOf(rail)) > 1.0)        // past the end of the line
     }
 
+    @Test fun junctionTrainsOnlyCountTowardsTheGate() {
+        val station = LatLng(22.9100, 88.3900)
+        val gateSouth = LatLng(22.9050, 88.3905)           // ~560 m south of the station
+        val southStation = LatLng(22.8800, 88.3920)        // the line towards Howrah
+        val eastStation = LatLng(22.9150, 88.4300)         // a branch going east
+        assertEquals(true, GateEngine.towards(station, gateSouth, southStation))
+        assertEquals(false, GateEngine.towards(station, gateSouth, eastStation))
+    }
+
+    @Test fun roadNamedAsFlyoverAtTheCrossing() {
+        val x = LatLng(28.6730, 77.2890)
+        val fly = CrossingPlanner.classify(x, emptyList(), emptyList(), "Delhi Shahdara Junction", "Continue onto Shahdara Flyover")
+        assertEquals(CrossingKind.OVERBRIDGE, fly.kind); assertEquals("Shahdara Flyover", fly.name); assertEquals(true, fly.named)
+        assertEquals(CrossingKind.UNDERPASS,
+            CrossingPlanner.classify(x, emptyList(), emptyList(), "X", "Continue onto Railway Underpass toward GT Rd").kind)
+        // a gate on the map nearby still wins: the safe answer
+        val gateNear = listOf("LC 12" to LatLng(x.lat + 0.001, x.lng))
+        assertEquals(CrossingKind.GATE, CrossingPlanner.classify(x, gateNear, emptyList(), "X", "Continue onto Shahdara Flyover").kind)
+        // an ordinary road at the crossing: an unnamed gate
+        assertEquals(CrossingKind.GATE, CrossingPlanner.classify(x, emptyList(), emptyList(), "X", "Turn left onto GT Rd").kind)
+        assertNull(CrossingPlanner.stepRoad("Turn left onto GT Rd"))
+    }
+
+    @Test fun unnamedCrossingIsNamedAfterItsRoad() {
+        assertEquals("GT Rd", CrossingPlanner.roadName("Turn right onto GT Rd"))
+        assertEquals("Guskara Station Rd", CrossingPlanner.roadName("Continue on Guskara Station Rd toward NH114"))
+        assertNull(CrossingPlanner.roadName("Head south"))
+        assertNull(CrossingPlanner.roadName("At the roundabout, take the 2nd exit onto the roundabout"))
+        val c = CrossingPlanner.classify(LatLng(22.9, 88.39), emptyList(), emptyList(), "Bandel Junction", "Turn right onto GT Rd")
+        assertEquals(CrossingKind.GATE, c.kind); assertEquals("GT Rd", c.road); assertEquals(false, c.named)
+    }
+
+    @Test fun otherRoadIsMeasuredByHowFarItGoes() {
+        val a = listOf(LatLng(23.0, 87.0), LatLng(23.0, 87.02))
+        val b = listOf(LatLng(23.0, 87.0), LatLng(23.006, 87.01), LatLng(23.0, 87.02))   // bows ~660 m away
+        assertEquals(true, Lines.deviationKm(b, a) > 0.6)
+        assertEquals(true, Lines.deviationKm(a, a) < 0.001)
+        assertEquals(23.006, Lines.farthestFrom(b, a).lat, 1e-9)
+    }
+
+    @Test fun typedNameBeatsNearbyLookAlike() {
+        fun m(q: String, n: String) = com.phataklive.data.Fuzzy.matchScore(q, n)
+        // the place typed must outrank a nearby shop with a similar name
+        assert((m("Bandel Junction", "Bandel Junction") * 5).toInt() > (m("Bandel Junction", "Bike Junction") * 5).toInt())
+        // half-typed words count as a match
+        assertEquals(1.0, m("gonn", "Gonna Kalitala"), 1e-9)
+        assertEquals(0.9, m("kali", "Gonna Kalitala"), 1e-9)
+        // a small spelling mistake still ranks high
+        assert(m("chinsura", "Chinsurah") >= 0.8)
+    }
+
     @Test fun bridgeNames() {
         fun k(name: String, cats: List<String> = emptyList(), nearStation: Boolean = false) = CrossingPlanner.bridgeKind(name, cats, nearStation)
         assertEquals(CrossingKind.OVERBRIDGE, k("Guskara Rail Over Bridge"))

@@ -44,6 +44,12 @@ object Lines {
         return best
     }
 
+    /** How far [a] gets from [b] at most, in km (points of [a] against the whole of [b]). */
+    fun deviationKm(a: List<LatLng>, b: List<LatLng>): Double = a.maxOfOrNull { distanceKm(it, listOf(b)) } ?: 0.0
+
+    /** The point of [a] farthest from [b]: where one road leaves the other. */
+    fun farthestFrom(a: List<LatLng>, b: List<LatLng>): LatLng = a.maxByOrNull { distanceKm(it, listOf(b)) } ?: a.first()
+
     /** Where a road meets the railway: the point, and how far along the road it is (km). */
     data class Hit(val pos: LatLng, val atKm: Double)
 

@@ -46,6 +46,19 @@ object Fuzzy {
         return d[a.length][b.length]
     }
 
+    /**
+     * How well what was typed matches a place name, 0..1, also while typing: the name starts with it ("gonn" ->
+     * "Gonna Kalitala") = 1, a word of it does = 0.9, otherwise spelling closeness of the whole name or its first words.
+     */
+    fun matchScore(typed: String, name: String): Double {
+        val q = typed.lowercase().trim()
+        val n = name.lowercase().trim()
+        if (q.isEmpty() || n.isEmpty()) return 0.0
+        if (n.startsWith(q)) return 1.0
+        if (n.split(' ', ',', '-', '(').any { it.isNotEmpty() && it.startsWith(q) }) return 0.9
+        return maxOf(similarity(q, n), nameScore(q, n))
+    }
+
     /** How well a typed place matches a name, 0..1: the whole name, or its first words ("bandel" vs "Bandel Jn"). */
     fun nameScore(typed: String, name: String): Double {
         val q = typed.lowercase().trim()

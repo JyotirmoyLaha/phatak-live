@@ -418,8 +418,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (kept.none { it.name.equals(p.name, ignoreCase = true) && Geo.km(it.pos, p.pos) < 3.0 }) kept += p
             kept
         }
-            // places within 40 km first (people mostly go somewhere near), each group in Google's order
-            .sortedBy { if (Geo.km(near, it.pos) <= 40.0) 0 else 1 }
+            // the name that matches what was typed best first (in steps, so close spellings tie), then places within
+            // 40 km (people mostly go somewhere near), then Google's order: "Bandel Junction" beats a nearby "Bike Junction"
+            .sortedWith(compareByDescending<Place> { (Fuzzy.matchScore(q, it.name) * 5).toInt() }
+                .thenBy { if (Geo.km(near, it.pos) <= 40.0) 0 else 1 })
             .take(7)
     }
 

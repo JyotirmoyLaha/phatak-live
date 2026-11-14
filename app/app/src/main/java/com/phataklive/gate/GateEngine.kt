@@ -9,6 +9,8 @@ import com.phataklive.data.Geo
 import com.phataklive.data.LatLng
 import com.phataklive.data.LiveDeparture
 import com.phataklive.data.PhatakDb
+import com.phataklive.data.RailLines
+import com.phataklive.route.Lines
 import com.phataklive.data.Station
 import com.phataklive.data.StopTime
 import com.phataklive.data.TimeSource
@@ -63,6 +65,22 @@ class GateEngine(private val db: PhatakDb) {
         const val ARRIVE_MARGIN_SEC = 60
         private const val STATION_LIMIT_KM = 0.6
         private const val MAX_OFF_TRACK_KM = 1.2
+        /** a gate this close to a station is at its platforms: every train calling there passes it */
+        private const val AT_PLATFORM_KM = 0.15
+        /** a gate further than this from a section's real railway line (when known) is not on that section */
+        private const val ON_LINE_KM = 0.2
+        /** gate within this angle of the direction from the station to the train's next / previous station */
+        private const val MAX_ANGLE_DEG = 45.0
+
+        /** The gate lies roughly in the direction from station [s] to station [o] (local flat frame). */
+        internal fun towards(s: LatLng, gate: LatLng, o: LatLng): Boolean {
+            val k = Math.cos(Math.toRadians(s.lat))
+            val gx = (gate.lng - s.lng) * k; val gy = gate.lat - s.lat
+            val ox = (o.lng - s.lng) * k; val oy = o.lat - s.lat
+            val len = Math.hypot(gx, gy) * Math.hypot(ox, oy)
+            if (len < 1e-12) return true
+            return (gx * ox + gy * oy) / len >= Math.cos(Math.toRadians(MAX_ANGLE_DEG))
+        }
         val IST: ZoneId = ZoneId.of("Asia/Kolkata")
         /** "7:23 PM" in IST, built by hand: Android's formatter may put a narrow no-break space before PM. */
         fun fmt(epochSec: Long): String {
@@ -137,6 +155,12 @@ class GateEngine(private val db: PhatakDb) {
             val o = db.station(other.stationCode) ?: return
             val (t, off) = Geo.project(gate, s.pos, o.pos)
             if (!atStation && (t < -0.05 || t > 1.05 || off > MAX_OFF_TRACK_KM)) return
+            // does this train's section really pass the gate? (junctions: trains of other lines must not count)
+            val atPlatform = Geo.km(gate, s.pos) < AT_PLATFORM_KM
+            val line = RailLines.get(s.code, o.code)
+            if (line != null) {
+                if (!atPlatform && Lines.distanceKm(gate, listOf(line)) > ON_LINE_KM) return
+            } else if (atStation && !atPlatform && !towards(s.pos, gate, o.pos)) return
             val tc = t.coerceIn(0.0, 1.0)
             val abs: Double
             var lead: Double
@@ -160,7 +184,9 @@ class GateEngine(private val db: PhatakDb) {
         }
         consider(next, true)
         consider(prev, false)
-        if (best == null && atStation) best = Placement(s, self, (self.arrAbs + self.depAbs) / 2.0, 0.0, TYPICAL_LEAD_MIN.toDouble())
+        // a gate right at the platforms is passed by every train calling there; one beyond them only by trains going that way
+        if (best == null && atStation && Geo.km(gate, s.pos) < AT_PLATFORM_KM)
+            best = Placement(s, self, (self.arrAbs + self.depAbs) / 2.0, 0.0, TYPICAL_LEAD_MIN.toDouble())
         return best
     }
 
