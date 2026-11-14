@@ -9,7 +9,7 @@
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-1C3A72?style=flat-square)
 ![Size](https://img.shields.io/badge/size-8%20MB-1C3A72?style=flat-square)
 ![No ads](https://img.shields.io/badge/ads%20%C2%B7%20tracking-none-0F7A47?style=flat-square)
-![Languages](https://img.shields.io/badge/EN%20%C2%B7%20%E0%A4%B9%E0%A4%BF%E0%A4%A8%E0%A5%8D%E0%A4%A6%E0%A5%80%20%C2%B7%20%E0%A6%AC%E0%A6%BE%E0%A6%82%E0%A6%B2%E0%A6%BE-1C3A72?style=flat-square)
+![Languages](https://img.shields.io/badge/languages-EN%20%C2%B7%20HI%20%C2%B7%20BN-1C3A72?style=flat-square)
 ![MIT](https://img.shields.io/badge/license-MIT-1C3A72?style=flat-square)
 
 <sub>
@@ -59,7 +59,7 @@ closing soon or closed** right now, with a countdown to the next change and the 
 
 <img src="docs/readme/screens.webp" alt="Four real screens: 01 Nearby, every gate around you with a live countdown and the nearest stations. 02 Find gate, any gate in India by gate, town or station name. 03 Gate status, the closing window, reopening time and the trains behind it. 04 Trains, live delay, last seen, next stops and platforms." width="100%">
 
-| | |
+| Screen | What you get |
 |---|---|
 | 🚦 **Nearby** | A hero card with a pulsing state light, a big countdown ("Opens in 4 min") and a closing-window timeline with a *now* marker. Below it, every other gate (OPEN / CLOSING SOON / CLOSED) and the next 3 hours at each nearby station, including trains that pass without stopping. |
 | 🔎 **Find gate** | Any gate in India by gate number, town or station, typed in English, Hindi or Bengali. Suggestions appear while you type, and small spelling mistakes are fine. |
@@ -101,7 +101,7 @@ closing soon or closed** right now, with a countdown to the next change and the 
 
 <sub><b>04 &nbsp;—&nbsp; HOW IT WORKS</b></sub>
 
-## Computed, not crowd-reported.
+## Six steps, run again every few minutes.
 
 Phatak Live **works out** each gate's status from train movements. It doesn't wait for someone to report it, so it
 works on the first day in any town in India.
@@ -127,7 +127,7 @@ works on the first day in any town in India.
 
 <sub><b>05 &nbsp;—&nbsp; THE GATE TIMING RULE</b></sub>
 
-## When a gate goes down, and when it comes back up.
+## Modelled on how gates are actually worked.
 
 There is no single published "close X minutes before the train" figure for Indian Railways. The rules tie the gate to
 the station master sending the train off: before taking off the departure signal (or giving line clear), the station
