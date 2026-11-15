@@ -50,7 +50,10 @@ class Strings(lang: String) {
     val opensIn = t("Opens in", "खुलेगा", "খুলবে")
     val closesIn = t("Closes in", "बंद होगा", "বন্ধ হবে")
     val min = t("min", "मिनट में", "মিনিটে")
-    val clearFor = t("Clear for the next 3 hours", "अगले 3 घंटे खुला", "পরের ৩ ঘণ্টা খোলা")
+    val clearFor = t("No passenger train for 3 hours", "3 घंटे तक कोई यात्री ट्रेन नहीं", "৩ ঘণ্টা কোনো যাত্রী ট্রেন নেই")
+    val goodsNote = t("Goods trains have no timetable and are not shown. The gate can close at other times too.",
+        "मालगाड़ियों का कोई टाइमटेबल नहीं होता, वे यहाँ नहीं दिखतीं। फाटक दूसरे समय भी बंद हो सकता है।",
+        "মালগাড়ির কোনো টাইমটেবিল নেই, তাই এখানে দেখানো হয় না। গেট অন্য সময়েও বন্ধ হতে পারে।")
     val open = t("OPEN", "खुला", "খোলা")
     val closed = t("CLOSED", "बंद", "বন্ধ")
     val closingSoon = t("CLOSING SOON", "जल्द बंद", "শীঘ্রই বন্ধ")

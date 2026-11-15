@@ -781,7 +781,18 @@ private fun GateHero(g: GateStatus, t: Strings, now: Long) {
                 HorizontalDivider(color = l.fg.copy(alpha = 0.15f))
                 g.window.take(3).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
             }
+            GoodsNote(t)
         }
+    }
+}
+
+/** Goods trains run without a timetable, so the gate can close when no listed train is due. */
+@Composable
+private fun GoodsNote(t: Strings) {
+    Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.Top) {
+        Icon(Icons.Rounded.WarningAmber, null, tint = Phatak.c.amber, modifier = Modifier.size(16.dp).padding(top = 1.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(t.goodsNote, style = MaterialTheme.typography.bodySmall, color = Phatak.c.muted)
     }
 }
 
@@ -882,6 +893,7 @@ private fun GateCard(g: GateStatus, t: Strings, now: Long) {
                     Column {
                         if (g.windowClose != null && g.windowOpen != null) { Spacer(Modifier.height(10.dp)); WindowBar(g.windowClose, g.windowOpen, now, l.fg, t) }
                         g.window.take(3).forEach { p -> TrainLine(p.trainNo, p.trainName, p.passEpochSec, p.delayMin, p.timeSource, t) }
+                        GoodsNote(t)
                         Spacer(Modifier.height(8.dp)); OpenInMaps(g, t)
                     }
                 }
